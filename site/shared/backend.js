@@ -1,11 +1,8 @@
-// 共用後端：Supabase（正式）或本機模式（未設定時，用 localStorage + BroadcastChannel 模擬，供離線開發與測試）
+// 共用後端：Cloudflare（Worker＋Durable Objects＋D1，正式）或本機模式（localStorage＋BroadcastChannel，離線開發與測試）
+// 部署在 Worker 上時會自動偵測 /api/health，不需要任何設定檔或金鑰。
 // 所有遊戲只透過這支檔案存取資料，換後端時只改這裡。
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 
-const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 去掉易混淆的 I O 0 1
-
-export const isConfigured = () => /^https:\/\/.+/.test(SUPABASE_URL || '') && !!SUPABASE_PUBLISHABLE_KEY;
 
 export function makeCode(len = 4) {
   let s = '';
@@ -15,27 +12,40 @@ export function makeCode(len = 4) {
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
-// ---------- Supabase ----------
-async function supabaseBackend() {
-  const { createClient } = await import(SUPABASE_JS);
-  const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false } });
+async function api(path, { method = 'GET', body } = {}) {
+  const res = await fetch(path, {
+    method,
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: 'no-store',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// ---------- Cloudflare ----------
+function cloudflareBackend() {
+  const roomPath = (game, code) => `/api/rooms/${encodeURIComponent(game)}/${encodeURIComponent(code)}`;
 
   async function getRoom(game, code) {
-    const { data, error } = await db.from('mg_rooms').select('state,revision').eq('game', game).eq('code', code).maybeSingle();
-    if (error) throw error;
-    return data ? { state: data.state, revision: data.revision } : null;
+    try {
+      return await api(roomPath(game, code));
+    } catch (e) {
+      if (e.status === 404) return null;
+      throw e;
+    }
   }
 
   return {
-    mode: 'supabase',
+    mode: 'cloudflare',
     async createRoom(game, initialState, { codeLength = 4 } = {}) {
-      for (let i = 0; i < 8; i++) {
-        const code = makeCode(codeLength);
-        const { error } = await db.from('mg_rooms').insert({ game, code, state: initialState, revision: 1 });
-        if (!error) return code;
-        if (error.code !== '23505') throw error; // 23505 = 房號重複，換一個再試
-      }
-      throw new Error('建立房間失敗：房號一直重複');
+      const { code } = await api('/api/rooms', { method: 'POST', body: { game, state: initialState, codeLength } });
+      return code;
     },
     getRoom,
     // fn(state) 回傳新 state；回傳 undefined 表示不寫入。版本衝突自動重讀重試。
@@ -45,9 +55,8 @@ async function supabaseBackend() {
         if (!room) throw new Error('找不到房間 ' + code);
         const next = fn(clone(room.state));
         if (next === undefined) return room.state;
-        const { data, error } = await db.rpc('mg_room_cas', { p_game: game, p_code: code, p_expected: room.revision, p_state: next });
-        if (error) throw error;
-        if (data !== null) return next;
+        const { revision } = await api(roomPath(game, code) + '/cas', { method: 'POST', body: { expected: room.revision, state: next } });
+        if (revision !== null) return next;
         await new Promise((r) => setTimeout(r, 40 + Math.random() * 120));
       }
       throw new Error('同時操作的人太多，請再試一次');
@@ -56,51 +65,66 @@ async function supabaseBackend() {
     subscribeRoom(game, code, cb) {
       let alive = true;
       let lastRev = 0;
-      const deliver = (row) => {
-        if (!alive || !row || row.game !== game || row.revision <= lastRev) return;
-        lastRev = row.revision;
-        cb(row.state);
+      let ws = null;
+      let retry = 0;
+      let pingTimer = null;
+      const deliver = (rev, state) => {
+        if (!alive || rev <= lastRev) return;
+        lastRev = rev;
+        cb(state);
       };
-      const channel = db
-        .channel(`mg-${game}-${code}-${Math.random().toString(36).slice(2, 8)}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'mg_rooms', filter: `code=eq.${code}` }, (p) => deliver(p.new))
-        .subscribe();
-      const refresh = () => getRoom(game, code).then((r) => r && deliver({ game, revision: r.revision, state: r.state })).catch(() => {});
+      const refresh = () => getRoom(game, code).then((r) => r && deliver(r.revision, r.state)).catch(() => {});
+      const connect = () => {
+        if (!alive) return;
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${proto}//${location.host}${roomPath(game, code)}/ws`);
+        ws.onopen = () => {
+          retry = 0;
+          clearInterval(pingTimer);
+          pingTimer = setInterval(() => ws && ws.readyState === 1 && ws.send('ping'), 25000);
+        };
+        ws.onmessage = (e) => {
+          if (e.data === 'pong') return;
+          try {
+            const m = JSON.parse(e.data);
+            if (m.type === 'state') deliver(m.revision, m.state);
+          } catch {}
+        };
+        ws.onclose = () => {
+          clearInterval(pingTimer);
+          if (!alive) return;
+          retry = Math.min(retry + 1, 6);
+          setTimeout(connect, 500 * 2 ** retry);
+          refresh();
+        };
+      };
+      connect();
       refresh();
-      // 保險：iPad 休眠或斷線回來時，Realtime 可能漏訊息，定時與回前景時補抓
+      // 保險：iPad 休眠或斷線回來時可能漏訊息，定時與回前景時補抓
       const timer = setInterval(refresh, 5000);
       const onVis = () => document.visibilityState === 'visible' && refresh();
       document.addEventListener('visibilitychange', onVis);
       return () => {
         alive = false;
         clearInterval(timer);
+        clearInterval(pingTimer);
         document.removeEventListener('visibilitychange', onVis);
-        db.removeChannel(channel);
+        try { ws && ws.close(); } catch {}
       };
     },
     async logEvent(evt) {
-      const { error } = await db.from('mg_events').insert(evt);
-      if (error) throw error;
+      await api('/api/events', { method: 'POST', body: evt });
     },
     async listEvents(game, room) {
-      const out = [];
-      for (let from = 0; ; from += 1000) {
-        let q = db.from('mg_events').select('*').eq('game', game).order('id').range(from, from + 999);
-        if (room) q = q.eq('room', room);
-        const { data, error } = await q;
-        if (error) throw error;
-        out.push(...data);
-        if (data.length < 1000) return out;
-      }
+      const q = new URLSearchParams({ game });
+      if (room) q.set('room', room);
+      return api('/api/events?' + q);
     },
     async submitScore(row) {
-      const { error } = await db.from('mg_scores').insert(row);
-      if (error) throw error;
+      await api('/api/scores', { method: 'POST', body: row });
     },
     async topScores(game, limit = 20) {
-      const { data, error } = await db.from('mg_scores').select('*').eq('game', game).order('score', { ascending: false }).limit(limit);
-      if (error) throw error;
-      return data;
+      return api(`/api/scores?game=${encodeURIComponent(game)}&limit=${limit}`);
     },
   };
 }
@@ -161,10 +185,19 @@ function localBackend() {
 }
 
 let backendPromise;
+// 有 /api/health（部署在 Worker 或 wrangler dev）→ Cloudflare；否則（一般靜態伺服器、直接開檔）→ 本機模式
 export function getBackend() {
-  if (!backendPromise) backendPromise = isConfigured() ? supabaseBackend() : Promise.resolve(localBackend());
+  if (!backendPromise) {
+    backendPromise = fetch('/api/health', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => (d && d.ok ? cloudflareBackend() : localBackend()))
+      .catch(() => localBackend());
+  }
   return backendPromise;
 }
+
+// 舊介面相容：是否連到雲端後端（回傳 Promise<boolean>）
+export const isConfigured = async () => (await getBackend()).mode === 'cloudflare';
 
 // 留痕：寫入失敗不擋遊戲，先存本機，之後自動補送
 const PENDING = 'mg-pending-events';

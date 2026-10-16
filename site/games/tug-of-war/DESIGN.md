@@ -94,7 +94,7 @@
 到期推進：任何一端（老師或學生）發現時間已到，都可以用 transact 把房間改成 ended，transact 保證只成功一次；學生端加 0.5～2 秒隨機延遲，避免全班同時寫入。
 
 ## 8. 資料留痕與技術
-- 純 HTML＋ES modules，共用 `../../shared/backend.js`（Supabase 或本機模式）。
+- 純 HTML＋ES modules，共用 `../../shared/backend.js`（Cloudflare 模式：Durable Objects 房間＋D1 事件；或本機模式）。
 - 房間 state 只存 `{status, round, durationSec, startedAt, endsAt, endedAt, rope, winner, endReason, ns, bank, players:{id:{team, correct, wrong, joinedAt}}}`；30 人整場作答後約 2～3 KB，遠低於 256 KB 上限。
 - 所有房間改動都經 `transact`（樂觀鎖重試），純函式寫在 `logic.js` 並有 node 測試。
 - 事件透過 `logEvent` 寫入 `mg_events`，失敗會存本機自動補送。單人模式 `room` 為 null。
@@ -103,4 +103,4 @@
 
 ## 驗收狀態
 - node 測試：答案正規化、判題、隊伍平衡、rope 夾限與勝負、到期只成功一次、出題不重複、state 大小、報告彙整、兩份題庫格式。
-- 尚待：瀏覽器多分頁實測、iPad Safari 真機、整班 30 人同時作答的 Supabase 負載。
+- 尚待：瀏覽器多分頁實測、iPad Safari 真機、整班 30 人同時作答的 Cloudflare（Durable Objects／D1）負載。

@@ -1,0 +1,18 @@
+{
+  // 數學遊戲網站設定。只要改 "name"（a-z0-9-），其餘由 Agent 指令自動處理。
+  // 首次部署：npx wrangler d1 create <name>-db --binding DB --update-config
+  //           npx wrangler d1 migrations apply <name>-db --remote
+  //           npx wrangler deploy
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "math-games",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./site",
+    "run_worker_first": ["/api/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }]
+}

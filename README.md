@@ -1,6 +1,8 @@
 # 數學遊戲模板（Math Game Templates）
 
-給國中數學老師的 AI Agent 遊戲製作起手包。用 Codex、Google Antigravity 或 OpenCode 開啟這個資料夾，貼上你的教材，Agent 會依本 repo 的設計規範做出課堂遊戲，部署到 **Cloudflare（網頁，Workers 靜態資產 `*.workers.dev`）＋ Supabase（房間與作答紀錄）**。
+給國中數學老師的 AI Agent 遊戲製作起手包。用 Codex、Google Antigravity 或 OpenCode 開啟這個資料夾，貼上你的教材，Agent 會依本 repo 的設計規範做出課堂遊戲，部署到 **Cloudflare 全家餐**：Worker API＋Durable Objects（房間即時同步）＋D1（作答事件、成績）＋靜態網頁（`*.workers.dev`）。只要一個 Cloudflare 帳號，唯一授權是 `npx wrangler login`；**不需要任何 MCP、沒有任何金鑰要填**，Codex／Antigravity 2／OpenCode 指令完全一樣。
+
+> 舊版（Supabase 後端）保留在 git 分支 `supabase`。
 
 - 示範站：https://math-game-templates.mathruffian-teaching.workers.dev
 - 本 repo：https://github.com/mathruffian-dot/math-game-templates
@@ -16,7 +18,7 @@
 2. **貼上教材**（文字、題目或課本頁的重點），或把檔案放進 `materials/` 資料夾。
 3. 對 Agent 說：**「照 AGENTS.md 幫我做成 T1 遊戲並部署。」**（第三小時改說 T3）
 
-Agent 會先摘要教學目標與常見誤解請你確認，再寫設計文件、做遊戲、測試、部署，最後給你學生端與老師端網址。你只需要：註冊、登入、在跳出的視窗按「同意／允許」。
+Agent 會先摘要教學目標與常見誤解請你確認，再寫設計文件、做遊戲、測試、部署，最後給你學生端與老師端網址。你只需要：註冊 Cloudflare、登入、在跳出的視窗按「同意／允許」（Allow）。
 
 ---
 
@@ -41,7 +43,7 @@ Agent 會先摘要教學目標與常見誤解請你確認，再寫設計文件�
 
 | 時段 | 做什麼 | 用到 |
 |------|--------|------|
-| 第 1 小時 | 連接 Agent 平台、Cloudflare、Supabase | [agent-connect-lazy-pack](https://github.com/mathruffian-dot/agent-connect-lazy-pack) |
+| 第 1 小時 | 連接 Agent 平台，**只連 Cloudflare**（`npx wrangler login`） | [agent-connect-lazy-pack](https://github.com/mathruffian-dot/agent-connect-lazy-pack) |
 | 第 2 小時 | **遊戲化評量**：把自己的題目做成 T1 拔河對戰，部署、兩台裝置對戰 | `docs/prompts.md` 第二小時、`docs/design-rules.md` |
 | 第 3 小時 | **發展活動**：把一道例題拆成拖拉解題步驟（T3）；進階挑戰 T2／T4／T5／T6 | `docs/prompts.md` 第三小時、`cards/` |
 
@@ -59,29 +61,31 @@ math-game-templates/
 ├── docs/
 │   ├── design-rules.md     回推八步驟填寫表、兩問檢驗、設計原理
 │   ├── template-catalog.md 六型模板與決策樹
-│   ├── deploy.md           Supabase＋Cloudflare 部署、驗收、常見錯誤
+│   ├── deploy.md           Cloudflare 部署（Worker＋DO＋D1）、API、驗收、常見錯誤
 │   ├── prompts.md          研習可直接複製的提示詞
 │   ├── data-and-report.md  留痕事件設計與分析
 │   └── references.md       理論依據與文獻
 ├── cards/                  T2／T4／T5／T6 設計卡
-├── site/                   ← 整個資料夾部署到 Cloudflare（wrangler deploy --assets）
+├── wrangler.jsonc          Worker 設定（老師只改 "name"）
+├── worker/index.js         API：Durable Objects 房間＋D1 事件／成績
+├── migrations/0001_init.sql  D1 資料表 mg_events、mg_scores
+├── site/                   ← 靜態網頁，由 wrangler.jsonc 的 assets 一起部署
 │   ├── index.html          作品入口頁
 │   ├── shared/             共用模組（後端、身分、QR、CSV、樣式）
 │   └── games/              tug-of-war（T1）、step-board（T3）、你的遊戲
 ├── games/<你的遊戲>/DESIGN.md   設計文件（Agent 建立，不部署）
-├── materials/              教材暫存（不會被上傳，Agent 建立）
-└── supabase/migrations/    資料表（一個 Supabase 專案可供多款遊戲共用）
+└── materials/              教材暫存（不會被上傳，Agent 建立）
 ```
 
-`site/shared/config.js` 留空時是**本機模式**：不用任何帳號，同一台電腦開兩個分頁就能測試對戰。
+沒有設定檔要填：`site/shared/backend.js` 會呼叫 `/api/health` 自動判斷。用任何靜態伺服器開 `site/` 就是**本機模式**（不用任何帳號，同一台電腦開兩個分頁就能測試對戰）；用 `npx wrangler dev`（http://localhost:8787）則連同 Worker、D1、Durable Objects 一起在本機模擬。
 
 ---
 
 ## 隱私與版權提醒
 
 - **教材原檔不要放進公開 repo**：課本、習作、教用版通常有著作權。放 `materials/`（已排除上傳），網站只放改寫後的題目。
-- **學生只用「班級-座號」**（如 `715-08`）或暱稱，不輸入真實姓名。作答紀錄對持有網站設定的人可讀，所以本來就不該放個資。
-- 前端只放 Supabase 的 publishable key；secret key 永遠不要給 Agent、也不要貼到對話裡。
+- **學生只用「班級-座號」**（如 `715-08`）或暱稱，不輸入真實姓名。作答紀錄透過網站 API 任何人可讀（只能新增與讀取、不能改刪），所以本來就不該放個資。
+- 本 repo 沒有任何金鑰要填；任何密碼、API token 都不要貼到對話裡。
 - 這是課堂等級的安全設計（學生不登入），不適合正式考試或成績登錄。
 
 ## 授權

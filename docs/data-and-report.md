@@ -38,35 +38,43 @@
 - **CSV 匯出**：`toCsv(rows)` + `download('events.csv', …)`，Excel 開啟不亂碼。
 - **接回教學**：報告頁最上方用一句話寫出「下一節課建議先處理的誤解」。
 
-## 四、用 SQL 分析（Agent 透過 Supabase MCP `execute_sql`，只下 SELECT）
+## 四、用 SQL 分析（D1，只下 SELECT）
+
+在 Cloudflare 後台 › Workers & Pages › D1 › `<name>-db` › **Console** 直接貼 SQL；或由 Agent 執行：
+
+```bash
+npx wrangler d1 execute <name>-db --remote --command "select kind,count(*) from mg_events group by kind"
+```
+
+D1 是 SQLite：`payload` 存 JSON 文字，用 `json_extract(payload,'$.err')` 取欄位；`created_at` 是 UTC 的 ISO 字串（如 `2026-10-17T01:23:45.678Z`）。
 
 ```sql
 -- 某遊戲近 1 天的誤解分布
-select payload->>'err' as err, count(*) as n
+select json_extract(payload,'$.err') as err, count(*) as n
 from mg_events
-where game = 'my-game' and created_at > now() - interval '1 day'
-  and payload->>'err' is not null
+where game = 'my-game' and created_at > strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day')
+  and json_extract(payload,'$.err') is not null
 group by 1 order by n desc;
 
 -- 某房間每位學生的作答數與正確數
 select player,
-       count(*) filter (where payload->>'correct' = 'true') as correct,
+       sum(case when json_extract(payload,'$.correct') = 1 then 1 else 0 end) as correct,
        count(*) as total
 from mg_events
 where game = 'my-game' and room = 'ABCD' and kind in ('answer', 'step_submit')
 group by player order by player;
 
 -- 各步首次提交正確率（attempt = 1）
-select payload->>'step' as step,
-       round(avg((payload->>'correct' = 'true')::int) * 100, 1) as first_try_pct,
+select json_extract(payload,'$.step') as step,
+       round(avg(case when json_extract(payload,'$.correct') = 1 then 1.0 else 0 end) * 100, 1) as first_try_pct,
        count(*) as n
 from mg_events
-where game = 'my-game' and kind = 'step_submit' and payload->>'attempt' = '1'
+where game = 'my-game' and kind = 'step_submit' and json_extract(payload,'$.attempt') = 1
 group by 1 order by 1;
 ```
 
 ## 五、資料保存與清理
 
-- 房間（`mg_rooms`）2 天後自動對外隱藏；事件與成績不會自動刪除。
-- 學期結束要清除資料：屬不可逆操作，請 Agent 先匯出 CSV 給老師保存，**經老師同意**後才執行刪除（需在 Supabase 儀表板或以具權限的方式進行，前端 key 刪不了）。
-- `mg_events` 對持有 publishable key 的人可讀，所以只寫匿名身分與作答歷程。
+- 房間（Durable Object）48 小時後過期；事件與成績（D1）不會自動刪除。
+- 學期結束要清除資料：屬不可逆操作，請 Agent 先匯出 CSV 給老師保存，**經老師同意**後才執行刪除（網站 API 沒有刪除功能，需在 Cloudflare 後台 D1 Console 或以 `npx wrangler d1 execute` 進行）。
+- `mg_events` 透過網站 API 任何人可讀，所以只寫匿名身分與作答歷程。

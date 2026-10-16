@@ -1,62 +1,108 @@
-# 部署：Supabase（後端）＋ Cloudflare Workers（網頁）
+# 部署：Cloudflare 全家餐（Worker API＋Durable Objects＋D1＋靜態網頁）
 
 > 原則：**Agent 執行所有指令；老師只負責註冊、登入、按同意。**
-> 一個 Supabase 專案與一個 Cloudflare Worker，可以放這位老師所有的遊戲（以 `game` 欄位與 `site/games/<slug>/` 區分）。
+> 只要**一個 Cloudflare 帳號**。唯一的授權是 `npx wrangler login`；**不需要任何 MCP、不需要其他資料庫服務、沒有任何金鑰要填**。Codex／Antigravity 2／OpenCode 三個平台的指令完全一樣。
+> 一個 Worker 可以放這位老師所有的遊戲（以 `game` 欄位與 `site/games/<slug>/` 區分）。
 
 ---
 
-## A. Supabase（Agent 透過 Supabase MCP 完成）
+## A. 架構與檔案
 
-前提：第 1 小時已把 Supabase MCP 接上 Agent。MCP 工具名稱以你的版本為準，下列為官方 Supabase MCP 常見名稱。
+| 檔案 | 角色 |
+|------|------|
+| `wrangler.jsonc`（根目錄） | Worker 設定：`name`、`assets` 指向 `./site`、Durable Object 綁定 `ROOMS`（類別 `Room`）、D1 綁定 `DB` |
+| `worker/index.js` | API：房間（Durable Objects）、事件與成績（D1） |
+| `migrations/0001_init.sql` | D1 資料表 `mg_events`、`mg_scores` |
+| `site/` | 靜態網頁（入口頁、共用模組、各遊戲） |
 
-1. **確認是否已設定**：`site/shared/config.js` 兩個值都有 → 跳到 B。
-2. **選專案**：`list_projects` 列出專案，請老師確認要用哪一個。
-   - 沒有專案：請老師在 https://supabase.com/dashboard 按 **New project**（區域建議 Northeast Asia (Tokyo)），建立後回報。不要替老師設定或記錄資料庫密碼。
-   - 狀態為暫停（paused）：請老師在儀表板按 **Restore**，或在老師同意後用 MCP 的還原工具。
-3. **檢查資料表**：`list_tables`（schema `public`）。已有 `mg_rooms`、`mg_events`、`mg_scores` → 跳過第 4 步。
-4. **套用 migration**：`apply_migration`，name 用 `math_game_kit`，內容為 `supabase/migrations/20261017000000_math_game_kit.sql` 全文。
-5. **安全檢查**：`get_advisors`（type: security）。
-   - 預期會有 2 條：`mg_room_cas` 是 SECURITY DEFINER 且 anon／authenticated 可執行——**這是刻意設計**（學生不登入，只能透過版本比對改房間），不要修改。
-   - 其他警告 → 原文回報給老師，不要自行改 RLS。
-6. **取得公開設定**：`get_project_url` 與 `get_publishable_keys`。選 `sb_publishable_` 開頭的 key（舊專案沒有時才用 anon key）。**不要取用或顯示 secret／service_role key。**
-7. **寫入** `site/shared/config.js`：
-   ```js
-   export const SUPABASE_URL = 'https://<project-ref>.supabase.co';
-   export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_…';
-   ```
-8. **快速驗證**：本機開 `npx serve site`，建一間房；再用 `execute_sql` 執行唯讀查詢
-   `select game, code, revision from mg_rooms order by created_at desc limit 5;` 應看到剛建的房。
-
-**MCP 無法寫入（唯讀模式或未連線）時的備案**：請老師在 Supabase 儀表板 → SQL Editor 貼上 migration 全文按 Run；再到 Project Settings → API Keys 複製 **Publishable key** 與 Project URL 貼給 Agent（這兩個值本來就會公開在網頁裡，可以貼；secret key 不行）。
+- **房間**：每間房是一個 Durable Object（以 `game:code` 命名），房間狀態存在 DO 內，WebSocket 即時推播；48 小時後過期；state 上限 256 KB。
+- **事件與成績**：存在 D1（`mg_events`、`mg_scores`），只能新增與讀取。
+- 前端 `site/shared/backend.js` 會呼叫 `/api/health` 自動判斷模式，**沒有任何設定檔或金鑰要填**。
 
 ---
 
-## B. Cloudflare（Workers 靜態資產；Agent 用 wrangler CLI 完成）
-
-Cloudflare Pages 已併入 Workers。**不要用 `wrangler pages project create`／`wrangler pages deploy`**（新版 wrangler 會轉成 `wrangler deploy` 而失敗）。
+## B. 首次部署（Agent 執行）
 
 ```bash
-npx wrangler whoami
-npx wrangler login                                                          # 未登入才需要；開系統瀏覽器按 Allow
-npx wrangler deploy --assets=./site --name <name> --compatibility-date 2026-10-01
+npx wrangler whoami                     # 已登入就跳過下一行
+npx wrangler login                      # 可加 --browser=false 取得授權網址，開在 Agent 內建瀏覽器，請老師按 Allow
 ```
 
-- `<name>`：只能小寫英數與連字號（a-z0-9-），例 `math-games-xxjh`。建議一位老師一個名稱，之後每次更新重跑同一行即覆蓋上線。
-- 不需要 `wrangler.toml`，全部用 CLI 參數。
-- 正式網址格式 `https://<name>.<帳號子網域>.workers.dev`，**以指令輸出最後印出的網址為準**。
-- **新帳號第一次**：須先在 Cloudflare Dashboard › Workers & Pages 設定 workers.dev 子網域，否則部署會失敗或沒有網址。
+1. **登入**：`npx wrangler login`（已登入用 `npx wrangler whoami` 確認就跳過）。
+2. **命名**：把 `wrangler.jsonc` 的 `"name"` 改成老師自己的英文名稱（只能 a-z0-9-，例 `wang-math-games`）。下面以 `<name>` 代稱。
+3. **建 D1 資料庫**（`wrangler.jsonc` 已經有 `d1_databases` 就跳過）：
+   ```bash
+   npx wrangler d1 create <name>-db --binding DB --update-config
+   ```
+   會自動把 D1 寫進 `wrangler.jsonc`。
+4. **建資料表**：
+   ```bash
+   npx wrangler d1 migrations apply <name>-db --remote
+   ```
+5. **部署**：
+   ```bash
+   npx wrangler deploy
+   ```
+   輸出最後一行是網址 `https://<name>.<帳號子網域>.workers.dev`，**以指令輸出為準**。
+
+**之後更新**：只要 `npx wrangler deploy`。新增 migration 檔時才需要再跑第 4 步。
+
+- **新帳號第一次**：須先在 Cloudflare 後台 › Workers & Pages 設定 workers.dev 子網域，否則部署會失敗或沒有網址。
+- Cloudflare Pages 已併入 Workers，**不要用任何 `wrangler pages` 指令**。
 - 示範站（本 repo 的模板）：https://math-game-templates.mathruffian-teaching.workers.dev
-- 部署前自查：
-  ```bash
-  grep -rniE "service_role|sb_secret_" site/    # 應該沒有任何結果
-  ```
-  並確認 `site/` 內沒有教材 PDF／照片。
+- 部署前自查：`site/` 內沒有教材 PDF／照片。
 
 ---
 
-## C. 驗收清單（用正式網址）
+## C. 本機測試
+
+兩種方式擇一：
+
+1. **完整模擬雲端**（含 Worker、D1、Durable Objects）：
+   ```bash
+   npx wrangler d1 migrations apply <name>-db --local
+   npx wrangler dev                      # http://localhost:8787
+   ```
+2. **純靜態**：任何靜態伺服器開 `site/`（例如 `npx serve site`）→ `/api/health` 不存在，自動進入**本機模式**（localStorage，同一台電腦多分頁可對戰；不同瀏覽器或裝置之間看不到彼此）。
+
+---
+
+## D. API（`worker/index.js`）
+
+| 方法與路徑 | 內容 | 回傳 |
+|------|------|------|
+| `GET /api/health` | 健康檢查 | `{ok:true}` |
+| `POST /api/rooms` | `{game, state}` 建房 | `{code}` |
+| `GET /api/rooms/:game/:code` | 讀房間 | `{state, revision}` |
+| `POST /api/rooms/:game/:code/cas` | `{expected, state}` 版本相符才寫入 | `{revision}`（`null`＝版本衝突，前端重讀重試） |
+| `GET /api/rooms/:game/:code/ws` | WebSocket 即時推播 | 訊息 `{type:'state', revision, state}` |
+| `POST /api/events`、`GET /api/events?game=&room=` | 寫入／讀取事件（D1） | |
+| `POST /api/scores`、`GET /api/scores?game=&limit=` | 寫入／讀取成績（D1） | |
+
+---
+
+## E. 資料查看
+
+- Cloudflare 後台 › Workers & Pages › D1 › `<name>-db` › **Console** 可直接下 SQL。
+- 或用各遊戲的報告頁匯出 CSV。
+- 指令：
+  ```bash
+  npx wrangler d1 execute <name>-db --remote --command "select kind,count(*) from mg_events group by kind"
+  ```
+
+---
+
+## F. 安全與免費額度
+
+- 學生不登入，只用班級-座號；Worker 會檢查 game／房號格式與大小上限；事件與成績**只能新增與讀取，沒有修改刪除 API**。課堂等級，不放個資。
+- 免費額度（每天 UTC 0 點重置）：Workers 每天 10 萬次請求；Durable Objects（SQLite 版，免費方案可用）每天 10 萬次請求；D1 每天讀 500 萬列／寫 10 萬列、容量 5 GB。一班 30 人一節課綽綽有餘。
+
+---
+
+## G. 驗收清單（用正式網址）
 
 - [ ] 入口頁 `https://<name>.<帳號子網域>.workers.dev/` 可開，新遊戲的連結在上面。
+- [ ] `https://<name>.<帳號子網域>.workers.dev/api/health` 回 `{"ok":true}`。
 - [ ] 頁面沒有顯示「本機模式」（若有模式標示）；瀏覽器 Console 沒有紅色錯誤。
 - [ ] **對戰型（T1／T4）**：老師端開房 → 兩個分頁（或兩台裝置）用不同座號加入 → 完成一局 → 雙方畫面一致、結算正確。
 - [ ] **解題板（T3／T5）**：完成一題，其中刻意犯一次誤解 → 看到診斷回饋 → 修正後完成。
@@ -67,22 +113,23 @@ npx wrangler deploy --assets=./site --name <name> --compatibility-date 2026-10-0
 
 ---
 
-## D. 常見錯誤與處理
+## H. 常見錯誤與處理
 
 | 症狀 | 原因 | 處理 |
 |------|------|------|
-| Supabase 無法建立新專案 | 免費版同一帳號最多 **2 個啟用中的專案** | 改用既有專案（一個專案就夠放所有遊戲），或暫停不用的專案 |
-| 原本好好的，隔週全部連不上 | 免費版專案**閒置 7 天會被暫停** | 儀表板按 Restore（需幾分鐘）；**上課前一天先開一次網站確認** |
-| 房間讀不到、寫不進 | 房間 2 天後過期 | 每堂課開新房 |
-| `state too large` | 房間 state 超過 256 KB | 把歷程移到 `mg_events`，state 只留目前畫面所需 |
-| 「同時操作的人太多，請再試一次」 | 很多人同時 `transact` 同一間房 | 學生作答改寫 `mg_events`，只有推進／結算才 `transact`（見 T2／T6 設計卡） |
-| 兩個分頁不同步 | 本機模式下用了不同瀏覽器；或 Realtime 被擋 | 本機模式只在同一瀏覽器有效；Supabase 模式下 backend 每 5 秒會補抓，稍等即可 |
-| `wrangler deploy` 失敗，提示需要 workers.dev 子網域 | 新帳號尚未設定 workers.dev 子網域 | 請老師在 Cloudflare Dashboard › Workers & Pages 設定子網域後重跑 |
+| `wrangler deploy` 失敗，提示需要 workers.dev 子網域 | 新帳號尚未設定 workers.dev 子網域 | 請老師在 Cloudflare 後台 › Workers & Pages 設定子網域後重跑 |
+| `d1 create` 失敗，提示名稱已存在 | 同名 D1 已建立過 | 換一個名稱；或沿用既有的那個（把它寫進 `wrangler.jsonc` 的 `d1_databases`） |
+| 報告頁讀不到事件，Worker 回 500、訊息含 `no such table` | 忘了跑 migrations | `npx wrangler d1 migrations apply <name>-db --remote` |
+| 照網路教學用 `wrangler pages deploy` 失敗 | Pages 已併入 Workers | 改用 `npx wrangler deploy`，不要用任何 pages 指令 |
 | 部署失敗，提示帳號或 email 問題 | 新帳號 email 尚未驗證 | 請老師到信箱點 Cloudflare 驗證信後重試 |
-| 照網路教學用 `wrangler pages deploy` 失敗 | Pages 已併入 Workers | 改用 `npx wrangler deploy --assets=./site --name <name> --compatibility-date 2026-10-01` |
-| `wrangler login` 卡住、瀏覽器顯示 localhost 無法連線 | OAuth 回呼（本機 localhost 埠）被防毒、防火牆或公司代理擋下 | 暫時允許該程式、換網路（手機熱點）重試；或請老師在自己的終端機執行 `npx wrangler login` 完成授權。不要改用 API token 貼進對話 |
+| `wrangler login` 卡住、瀏覽器顯示 localhost 無法連線 | OAuth 回呼（本機 localhost 埠）被防毒、防火牆或公司代理擋下 | 改用 `npx wrangler login --browser=false` 取得網址在 Agent 內建瀏覽器開；或換網路（手機熱點）重試。不要改用 API token 貼進對話 |
+| 房間讀不到、寫不進 | 房間 48 小時後過期 | 每堂課開新房 |
+| `state too large` | 房間 state 超過 256 KB | 把歷程移到事件（`mg_events`），state 只留目前畫面所需 |
+| 「同時操作的人太多，請再試一次」 | 很多人同時 `transact` 同一間房 | 學生作答改寫事件，只有推進／結算才 `transact`（見 T2／T6 設計卡） |
+| 兩個分頁不同步 | 本機模式下用了不同瀏覽器；或學校網路擋 WebSocket | 本機模式只在同一瀏覽器有效；雲端模式下 backend 會重讀補抓，稍等即可 |
+| 正式網址仍顯示「本機模式」 | `/api/health` 沒回應（開到靜態伺服器、或部署失敗） | 確認開的是 `wrangler deploy` 輸出的網址，並打開 `/api/health` 檢查 |
 | PowerShell：「因為這個系統上已停用指令碼執行」 | 學校電腦執行原則 | 用 `npx.cmd` 取代 `npx`；`.ps1` 用 `powershell -ExecutionPolicy Bypass -File x.ps1` |
 | `npx` 找不到 | 電腦沒裝 Node.js（學校電腦常無管理員權限） | 請老師改用自己的筆電，或請資訊組安裝 Node.js LTS |
-| 雙擊 html 打開是白畫面 | `file://` 不能載入 ES modules | 用 `npx serve site` 開 |
-| 學校網路下正式版連不上資料庫 | 學校過濾擋了 `cdn.jsdelivr.net` 或 `*.supabase.co` | 用手機熱點測試確認；請資訊組放行這兩個網域 |
+| 雙擊 html 打開是白畫面 | `file://` 不能載入 ES modules | 用 `npx wrangler dev` 或 `npx serve site` 開 |
+| 學校網路下正式版連不上 | 學校過濾擋了 `*.workers.dev` 或 `cdn.jsdelivr.net` | 用手機熱點測試確認；請資訊組放行 |
 | 部署後看到舊版 | 瀏覽器快取 | 重新整理（必要時清快取）；確認開的是指令輸出的正式網址 |

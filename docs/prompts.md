@@ -109,6 +109,6 @@
 ### D-3 部署後不對
 ```
 正式網址＜網址＞打開後＜白畫面／還是本機模式／看到舊版＞。
-請依 docs/deploy.md 的常見錯誤表逐項檢查（config.js、部署的資料夾、快取、Console 錯誤），
+請依 docs/deploy.md 的常見錯誤表逐項檢查（`/api/health` 是否回應、是否跑過 D1 migrations、快取、Console 錯誤），
 不要讀或要求任何 secret key，修好後重新部署並驗收。
 ```

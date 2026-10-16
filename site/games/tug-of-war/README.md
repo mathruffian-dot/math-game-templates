@@ -27,7 +27,7 @@
 | `report.html?rooms=ABCD,EFGH` | 報告頁，預先帶入房號；也可勾「全部」 |
 
 老師端：批量開 1～30 間房、每間有房號與 QR（點 QR 放大投影）、設定比賽時間（預設 5 分鐘）、開始／提前結束／再來一局、即時看繩子位置、兩隊人數與答對數。房間列表存在老師這台電腦，重新整理不會不見。
-未設定 `../../shared/config.js` 時是**本機模式**（畫面右上角有徽章）：資料只在這台電腦，可開多個分頁模擬老師與學生。
+連不到 Worker API（例如用純靜態伺服器開 `site/`）時是**本機模式**（畫面右上角有徽章）：資料只在這台電腦，可開多個分頁模擬老師與學生。
 
 ## 換題庫
 
@@ -112,7 +112,7 @@ export const BANK = {
 特殊 `misconception`：`format_invalid`（輸入看不懂，`counted:false`，不計分）、`unclassified`（輸入題沒對到預期錯誤答案）、`order_wrong`（排序題未指定代碼）。
 **老師端統計一律用 `misconception` 代碼分群，不要用 `feedback` 或 `given` 文字。**
 
-## 房間 state 結構（`mg_rooms.state`）
+## 房間 state 結構（存在 Durable Object）
 ```js
 {
   v: 1, ns: 'class' | 'demo', bank: 'default' | 'ratio' | …,

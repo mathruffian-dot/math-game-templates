@@ -172,4 +172,4 @@ export default { id, title, unit, kinds, stepLabels, makeProblem };
 
 - 卡片只能用一次；需要同一個數出現兩次的題目，請做兩張文字不同的卡（例如附上單位或位置說明），或改成鷹架。
 - 診斷依「第一條符合的規則」，同時犯兩個錯只會說一個。
-- 本機模式（未設定 Supabase）只在同一個瀏覽器的分頁之間同步。
+- 本機模式（純靜態伺服器開 `site/`、連不到 Worker API）只在同一個瀏覽器的分頁之間同步；要跨裝置請部署或用 `npx wrangler dev`。
