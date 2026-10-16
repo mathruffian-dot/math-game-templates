@@ -1,9 +1,12 @@
-// T1 拔河對戰：學生端／老師端／單人練習（同一頁依網址參數分流）
+// T1 紅藍格鬥（扣血對戰）：學生端／老師端／單人練習（同一頁依網址參數分流）
+// 資料夾與 game id 沿用 tug-of-war（網址已對外流通，勿改）
 //   ?teacher=1           老師端（班級版：班級-座號）
 //   ?teacher=1&ns=demo   老師端（試玩版：暱稱）
 //   ?room=CODE           學生加入房間
 //   ?mode=solo           單人練習（對電腦）
 //   ?bank=ratio          換成 bank-ratio.js（老師開房時帶上，房間會記住題庫）
+//   ?play=steps&content=linear-equation|proportion|poly-division
+//                        發展式出招（解題板，重用 step-board 的 content；老師端也可在畫面上選）
 import { getBackend, logEvent, flushPending } from '../../shared/backend.js';
 import { parsePlayer, remember, recall, forget, queryParam } from '../../shared/identity.js';
 import { qrImage, joinUrl } from '../../shared/qr.js';
@@ -19,12 +22,17 @@ const BANKS = {
 };
 const bankKeyOf = (k) => (k && BANKS[k] ? k : 'default');
 const loadBank = (k) => BANKS[bankKeyOf(k)]();
+// 發展式出招：用到才載入（評量式完全不受影響）
+const STEP_TITLES = { 'linear-equation': '解一元一次方程式', proportion: '比例式求未知數', 'poly-division': '多項式除法（直式）' };
+const PLAY_LABEL = (st) => (st?.play === 'steps' ? `發展式・${STEP_TITLES[st.content] || st.content}` : '評量式・題庫');
+let stepsMod = null;
+const loadSteps = async () => (stepsMod ||= await import('./steps-mode.js'));
 
 const app = document.getElementById('app');
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const TEAM_NAME = { red: '紅隊', blue: '藍隊', draw: '平手' };
-const REASON = { rope: '拉到底', time: '時間到', teacher: '老師結束' };
+const REASON = { ko: '擊倒', time: '時間到・比剩餘血量', teacher: '老師結束・比剩餘血量', rope: '舊版拔河' };
 
 let toastTimer;
 function toast(msg, ms = 2600) {
@@ -49,38 +57,70 @@ const fmtTime = (ms) => {
 let tickFn = null;
 setInterval(() => tickFn && tickFn(Date.now()), 250);
 
-// ---------- 拔河繩 ----------
-function ropeHtml({ redLabel = '紅隊', blueLabel = '藍隊' } = {}) {
-  return `<div class="rope" data-rope>
-    <div class="rope-end"><span class="team-tag red">${redLabel}</span><span class="rope-info" data-red-info></span></div>
-    <div class="rope-track" aria-hidden="true">
-      <div class="win-zone red"></div><div class="win-zone blue"></div>
-      <div class="rope-line"></div><div class="center-line"></div>
-      <div class="flag" data-flag>
-        <svg viewBox="0 0 28 44"><line x1="5" y1="2" x2="5" y2="42"/><path d="M5 3 L26 10 L5 17 Z"/></svg>
-      </div>
-    </div>
-    <div class="rope-end"><span class="team-tag blue">${blueLabel}</span><span class="rope-info" data-blue-info></span></div>
-  </div>
-  <p class="rope-caption" data-rope-caption></p>`;
+// ---------- 格鬥場：兩個角色卡＋血條 ----------
+function fighterHtml(team, label, icon) {
+  return `<div class="fighter ${team}" data-fighter="${team}">
+      <div class="fighter-top"><span class="team-tag ${team}">${label}</span></div>
+      <div class="fighter-icon" aria-hidden="true">${icon}</div>
+      <div class="hp-bar" role="meter" aria-label="${label}血量" aria-valuemin="0" data-hp-bar><span data-hp-fill></span></div>
+      <div class="hp-num"><b data-hp>–</b><span> / <span data-max>–</span></span></div>
+      <div class="fighter-info" data-info></div>
+      <div class="hit-pop" data-pop aria-hidden="true"></div>
+    </div>`;
 }
 
-function updateRope(root, rope, { red = '', blue = '' } = {}) {
-  const flag = $('[data-flag]', root);
-  if (!flag) return;
-  const prev = Number(flag.dataset.rope ?? 0);
-  flag.dataset.rope = rope;
-  flag.style.left = `${50 + (rope / L.ROPE_LIMIT) * 46}%`;
-  const track = $('.rope-track', root);
-  if (rope !== prev) {
-    track.classList.remove('tug-left', 'tug-right');
-    void track.offsetWidth;
-    track.classList.add(rope < prev ? 'tug-left' : 'tug-right');
+function arenaHtml({ redLabel = '紅隊', blueLabel = '藍隊', redIcon = '🥊', blueIcon = '🥊' } = {}) {
+  return `<div class="arena" data-arena>
+    ${fighterHtml('red', redLabel, redIcon)}
+    <div class="arena-mid"><span class="vs">VS</span><span class="arena-timer" data-arena-timer></span></div>
+    ${fighterHtml('blue', blueLabel, blueIcon)}
+  </div>
+  <p class="arena-caption" data-arena-caption></p>`;
+}
+
+function updateArena(root, state, { red = '', blue = '' } = {}) {
+  if (!state || !$('[data-arena]', root)) return;
+  const { hp, maxHp } = L.hpView(state);
+  for (const team of ['red', 'blue']) {
+    const f = $(`[data-fighter="${team}"]`, root);
+    if (!f) continue;
+    const now = Math.max(0, hp[team]);
+    const max = maxHp[team] || 1;
+    const pct = Math.max(0, Math.min(100, (now / max) * 100));
+    const fill = $('[data-hp-fill]', f);
+    fill.style.width = `${pct}%`;
+    fill.className = pct > 50 ? 'hi' : pct > 25 ? 'mid' : 'low';
+    const bar = $('[data-hp-bar]', f);
+    bar.setAttribute('aria-valuemax', String(max));
+    bar.setAttribute('aria-valuenow', String(now));
+    $('[data-hp]', f).textContent = now;
+    $('[data-max]', f).textContent = max;
+    $('[data-info]', f).textContent = team === 'red' ? red : blue;
+    f.classList.toggle('down', now <= 0);
+    // 受擊：血量比上次少 → 震動＋閃紅＋飄出傷害數字
+    const prev = f.dataset.hp === undefined ? null : Number(f.dataset.hp);
+    const prevMax = Number(f.dataset.max);
+    f.dataset.hp = now;
+    f.dataset.max = max;
+    if (prev !== null && prevMax === max && now < prev) {
+      const pop = $('[data-pop]', f);
+      pop.textContent = `−${prev - now}`;
+      f.classList.remove('hit');
+      void f.offsetWidth;
+      f.classList.add('hit');
+    }
   }
-  const cap = $('[data-rope-caption]', root);
-  if (cap) cap.textContent = rope === 0 ? '旗子在正中間' : `${rope < 0 ? '紅隊' : '藍隊'}領先 ${Math.abs(rope)}（拉到 ${L.ROPE_LIMIT} 直接獲勝）`;
-  const r = $('[data-red-info]', root); if (r) r.textContent = red;
-  const b = $('[data-blue-info]', root); if (b) b.textContent = blue;
+  const cap = $('[data-arena-caption]', root);
+  if (cap) cap.textContent = state.status === 'waiting'
+    ? '血量依對手人數在開賽時鎖定。答對就攻擊對手，血量歸零就倒下。'
+    : '答對攻擊對手；血量歸零立即分勝負，時間到比剩餘血量比例。';
+}
+
+function setArenaTimer(root, text, urgent = false) {
+  const t = $('[data-arena-timer]', root);
+  if (!t) return;
+  t.textContent = text;
+  t.classList.toggle('urgent', urgent);
 }
 
 const teamInfo = (state) => {
@@ -103,8 +143,8 @@ function logMatchEnd(room, player, state, extra = {}) {
   const t = L.teamStats(state);
   logEvent({
     game: GAME, room, player, kind: 'match_end',
-    payload: { round: state.round, rope: state.rope, winner: state.winner, reason: state.endReason, durationSec: state.durationSec,
-      playedMs: (state.endedAt || Date.now()) - (state.startedAt || Date.now()), red: t.red, blue: t.blue, ns: state.ns, bank: state.bank, ...extra },
+    payload: { round: state.round, hp: state.hp, maxHp: state.maxHp, winner: state.winner, reason: state.endReason, durationSec: state.durationSec,
+      playedMs: (state.endedAt || Date.now()) - (state.startedAt || Date.now()), red: t.red, blue: t.blue, ns: state.ns, bank: state.bank, play: state.play || 'quiz', content: state.content || null, ...extra },
   });
 }
 
@@ -116,7 +156,7 @@ async function homeMain() {
   setHeader(DEFAULT_BANK, be);
   app.innerHTML = `
   <section class="panel home">
-    <h2>加入拔河對戰</h2>
+    <h2>加入紅藍格鬥（扣血對戰）</h2>
     <form class="row" id="join-form">
       <input id="join-code" placeholder="輸入房號（4 碼）" maxlength="8" autocomplete="off" autocapitalize="characters" aria-label="房號">
       <button class="primary">加入</button>
@@ -146,6 +186,9 @@ async function teacherMain() {
   setHeader(bank, be);
   const errs = L.validateBank(bank);
   const storeKey = `teacher-rooms:${ns}`;
+  const urlPlay = L.normalizePlay(queryParam('play'), queryParam('content'));
+  const playOpts = [['quiz', `評量式（題庫：${bank.title}）`], ...L.STEP_CONTENTS.map((c) => [`steps:${c}`, `發展式（解題板：${STEP_TITLES[c] || c}）`])];
+  const playDefault = urlPlay.play === 'steps' ? `steps:${urlPlay.content}` : 'quiz';
   let codes = recall(GAME, storeKey) || [];
   const rooms = new Map();
   const savedDur = recall(GAME, 'teacher-duration') || 5;
@@ -157,6 +200,7 @@ async function teacherMain() {
     <div class="row">
       <label class="field">房間數 <input type="number" id="t-count" min="1" max="30" value="1" inputmode="numeric"></label>
       <button class="primary" id="t-create">批量開房</button>
+      <label class="field">出招方式 <select id="t-play">${playOpts.map(([v, t]) => `<option value="${v}" ${v === playDefault ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select></label>
       <label class="field">比賽時間 <select id="t-dur">${[1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15].map((m) => `<option value="${m}" ${m === savedDur ? 'selected' : ''}>${m} 分鐘</option>`).join('')}</select></label>
     </div>
     <div class="row">
@@ -188,7 +232,7 @@ async function teacherMain() {
         const { state, changed } = await roomTx(be, code, (s) => L.startMatch(s, now, duration()));
         if (changed) {
           const t = L.teamStats(state);
-          logEvent({ game: GAME, room: code, player: 'teacher', kind: 'match_start', payload: { round: state.round, durationSec: state.durationSec, red: t.red.players, blue: t.blue.players, ns, bank: state.bank } });
+          logEvent({ game: GAME, room: code, player: 'teacher', kind: 'match_start', payload: { round: state.round, durationSec: state.durationSec, red: t.red.players, blue: t.blue.players, maxHp: state.maxHp, ns, bank: state.bank, play: state.play || 'quiz', content: state.content || null } });
         }
       } else if (what === 'end') {
         const { state, changed } = await roomTx(be, code, (s) => L.endMatch(s, 'teacher', Date.now()));
@@ -214,11 +258,12 @@ async function teacherMain() {
     const label = s.status === 'waiting' ? '等待開始' : s.status === 'playing' ? '比賽中' : `結束：${s.winner === 'draw' ? '平手' : TEAM_NAME[s.winner] + '勝'}（${REASON[s.endReason] || ''}）`;
     const pill = $('[data-status]', c);
     pill.textContent = `第 ${s.round} 局・${label}`;
+    $('[data-play]', c).textContent = PLAY_LABEL(s);
     pill.className = `status-pill ${s.status}`;
     $('[data-act="start"]', c).disabled = s.status !== 'waiting';
     $('[data-act="end"]', c).disabled = s.status !== 'playing';
     $('[data-act="reset"]', c).disabled = s.status !== 'ended';
-    updateRope(c, s.rope, teamInfo(s));
+    updateArena(c, s, teamInfo(s));
   }
 
   async function addCard(code) {
@@ -227,10 +272,10 @@ async function teacherMain() {
     const card = document.createElement('article');
     card.className = 'panel room-card';
     card.innerHTML = `
-      <header class="room-head"><span class="room-code">${code}</span><span class="status-pill" data-status>讀取中…</span><span class="timer" data-timer></span></header>
+      <header class="room-head"><span class="room-code">${code}</span><span class="status-pill" data-status>讀取中…</span><span class="timer" data-timer></span><span class="muted small" data-play></span></header>
       <div class="room-body">
         <button class="qr-box" data-qr aria-label="放大 QR Code"></button>
-        <div class="room-main">${ropeHtml()}</div>
+        <div class="room-main">${arenaHtml()}</div>
       </div>
       <a class="join-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
       <div class="row room-actions">
@@ -269,7 +314,8 @@ async function teacherMain() {
     e.target.disabled = true;
     try {
       for (let i = 0; i < n; i++) {
-        const code = await be.createRoom(GAME, L.newRoomState({ ns, bank: bankKey, durationSec: duration() }));
+        const [play, content] = $('#t-play').value.split(':');
+        const code = await be.createRoom(GAME, L.newRoomState({ ns, bank: bankKey, durationSec: duration(), play, content }));
         codes.push(code);
         save();
         addCard(code);
@@ -305,6 +351,7 @@ async function teacherMain() {
       if (!s) continue;
       timer.textContent = s.status === 'playing' ? fmtTime(s.endsAt - now) : s.status === 'waiting' ? `${fmtTime(duration() * 1000)}` : '';
       timer.classList.toggle('urgent', s.status === 'playing' && s.endsAt - now <= 10000);
+      setArenaTimer(r.card, s.status === 'playing' ? fmtTime(s.endsAt - now) : s.status === 'waiting' ? '待開始' : '結束', s.status === 'playing' && s.endsAt - now <= 10000);
       if (s.status === 'playing' && now >= s.endsAt && !r.ending) {
         r.ending = true;
         roomTx(be, r.code, (st) => L.expireIfDue(st, Date.now()))
@@ -318,18 +365,18 @@ async function teacherMain() {
 
 // ====================================================================
 // 作答工作區（房間與單人共用）
-// ctx = { room, id, team, bank, bankKey, getState(), submit(correct, weight, factor) → {pullApplied, endedNow}, onEnded(state) }
+// ctx = { room, id, team, bank, bankKey, getState(), submit(correct, weight, factor) → {damage, combo, endedNow}, onEnded(state) }
 // ====================================================================
-function mountPlay(ctx, { redLabel, blueLabel } = {}) {
-  const myTeamDir = ctx.team === 'red' ? '左邊' : '右邊';
+function mountPlay(ctx, arenaOpts = {}) {
+  const foeName = arenaOpts.blueLabel && ctx.team === 'red' ? arenaOpts.blueLabel : TEAM_NAME[L.otherTeam(ctx.team)];
   app.innerHTML = `
   <section class="play">
     <div class="hud">
       <span class="team-tag ${ctx.team}">你在${TEAM_NAME[ctx.team]}</span>
-      <span class="hud-stat">答對 <b data-my-correct>0</b>・答錯 <b data-my-wrong>0</b></span>
+      <span class="hud-stat">答對 <b data-my-correct>0</b>・答錯 <b data-my-wrong>0</b>・連對 <b data-my-streak>0</b></span>
       <span class="timer big" data-timer></span>
     </div>
-    <div class="panel rope-panel">${ropeHtml({ redLabel, blueLabel })}<p class="muted small center">答對就把旗子往${myTeamDir}拉；答錯不拉，看完診斷再試。</p></div>
+    <div class="panel arena-panel">${arenaHtml(arenaOpts)}<p class="muted small center">答對就攻擊${escapeHtml(foeName)}（連對 ${L.COMBO_AT} 題起傷害 ×${L.COMBO_MULT}）；答錯不攻擊、不扣自己的血，看完診斷再試。</p></div>
     <article class="panel qcard" data-qcard></article>
   </section>`;
 
@@ -370,7 +417,7 @@ function mountPlay(ctx, { redLabel, blueLabel } = {}) {
     }
     card.innerHTML = `
       ${lastAnswer ? `<p class="last-answer">上一題正確答案：${escapeHtml(lastAnswer)}</p>` : ''}
-      <div class="q-meta"><span>第 ${served} 題</span><span title="答對拉力權重">拉力 ${stars}</span>${attempt > 1 ? '<span class="retry-tag">再試一次・拉力減半</span>' : ''}</div>
+      <div class="q-meta"><span>第 ${served} 題</span><span title="答對攻擊力權重">攻擊 ${stars}</span>${attempt > 1 ? '<span class="retry-tag">再試一次・傷害減半</span>' : ''}</div>
       <h2 class="stem">${renderMath(q.stem)}</h2>
       <div class="answer-area" data-area>${area}</div>
       <div class="feedback hidden" data-feedback></div>`;
@@ -417,7 +464,7 @@ function mountPlay(ctx, { redLabel, blueLabel } = {}) {
     if (!res.counted) {
       toast(res.feedback);
       if (res.misconception === 'format_invalid') {
-        logEvent({ game: GAME, room: ctx.room, player: ctx.id, kind: 'answer', payload: { qid: q.id, type: q.type, given: res.givenText, correct: false, misconception: res.misconception, ms: Date.now() - shownAt, team: ctx.team, pullApplied: 0, attempt, counted: false, bank: ctx.bankKey, round: st.round } });
+        logEvent({ game: GAME, room: ctx.room, player: ctx.id, kind: 'answer', payload: { qid: q.id, type: q.type, given: res.givenText, correct: false, misconception: res.misconception, ms: Date.now() - shownAt, team: ctx.team, damage: 0, attempt, counted: false, bank: ctx.bankKey, round: st.round } });
       }
       return;
     }
@@ -425,19 +472,20 @@ function mountPlay(ctx, { redLabel, blueLabel } = {}) {
     const ms = Date.now() - shownAt;
     $('[data-area]', card).classList.add('locked');
     if (btn) btn.classList.add(res.correct ? 'picked-ok' : 'picked-bad');
-    let pullApplied = 0, endedNow = false, failed = false;
+    let damage = 0, combo = false, endedNow = false, failed = false;
     try {
-      ({ pullApplied, endedNow } = await ctx.submit(res.correct, q.weight || 1, attempt > 1 ? L.RETRY_FACTOR : 1));
+      ({ damage, combo, endedNow } = await ctx.submit(res.correct, q.weight || 1, attempt > 1 ? L.RETRY_FACTOR : 1));
     } catch {
       failed = true;
     }
-    logEvent({ game: GAME, room: ctx.room, player: ctx.id, kind: 'answer', payload: { qid: q.id, type: q.type, given: res.givenText, correct: res.correct, misconception: res.misconception, ms, team: ctx.team, pullApplied, attempt, counted: true, weight: q.weight || 1, bank: ctx.bankKey, round: st.round } });
+    const after = ctx.getState();
+    logEvent({ game: GAME, room: ctx.room, player: ctx.id, kind: 'answer', payload: { qid: q.id, type: q.type, given: res.givenText, correct: res.correct, misconception: res.misconception, ms, team: ctx.team, damage, combo, attempt, counted: true, weight: q.weight || 1, bank: ctx.bankKey, round: st.round, foeHp: after?.hp ? after.hp[L.otherTeam(ctx.team)] : null } });
     if (endedNow && ctx.onEndedByMe) ctx.onEndedByMe();
     const fb = $('[data-feedback]', card);
     fb.classList.remove('hidden');
     if (res.correct) {
       fb.className = 'feedback good';
-      fb.innerHTML = `<b>答對！</b>${failed ? '（連線不穩，這次拉力沒送出）' : pullApplied ? `${TEAM_NAME[ctx.team]}拉動 ${pullApplied}` : ''}${res.feedback ? `<div>${renderMath(res.feedback)}</div>` : ''}`;
+      fb.innerHTML = `<b>答對！</b>${failed ? '（連線不穩，這次攻擊沒送出）' : damage ? `攻擊${escapeHtml(foeName)}，造成 ${damage} 點傷害${combo ? `（連擊 ×${L.COMBO_MULT}）` : ''}` : ''}${res.feedback ? `<div>${renderMath(res.feedback)}</div>` : ''}`;
       setTimeout(() => ctx.getState()?.status === 'playing' && next(), res.feedback ? 1600 : 800);
       return;
     }
@@ -445,9 +493,9 @@ function mountPlay(ctx, { redLabel, blueLabel } = {}) {
     if (q.type === 'choice') wrongOpts.add(given);
     const pos = q.type === 'order' && res.firstWrong >= 0 ? `從第 ${res.firstWrong + 1} 步開始順序不對。` : '';
     fb.className = 'feedback bad';
-    fb.innerHTML = `<b>這次不拉繩，先看診斷：</b><div>${escapeHtml(pos)}${renderMath(res.feedback)}</div>
+    fb.innerHTML = `<b>這次沒有攻擊，先看診斷：</b><div>${escapeHtml(pos)}${renderMath(res.feedback)}</div>
       <div class="cool-bar"><span></span></div>
-      <div class="row"><button data-retry disabled>再試一次（拉力減半）</button><button class="primary" data-next disabled>下一題</button></div>`;
+      <div class="row"><button data-retry disabled>再試一次（傷害減半）</button><button class="primary" data-next disabled>下一題</button></div>`;
     const bar = $('.cool-bar span', fb);
     requestAnimationFrame(() => { bar.style.transition = `width ${L.COOLDOWN_MS}ms linear`; bar.style.width = '100%'; });
     setTimeout(() => {
@@ -466,8 +514,9 @@ function mountPlay(ctx, { redLabel, blueLabel } = {}) {
     if (me && $('[data-my-correct]')) {
       $('[data-my-correct]').textContent = me.correct;
       $('[data-my-wrong]').textContent = me.wrong;
+      $('[data-my-streak]').textContent = me.streak || 0;
     }
-    updateRope(app, st.rope, ctx.ropeInfo ? ctx.ropeInfo(st) : teamInfo(st));
+    updateArena(app, st, ctx.arenaInfo ? ctx.arenaInfo(st) : teamInfo(st));
   }
 
   function tick(now) {
@@ -477,6 +526,7 @@ function mountPlay(ctx, { redLabel, blueLabel } = {}) {
     if (st.status === 'playing') {
       t.textContent = fmtTime(st.endsAt - now);
       t.classList.toggle('urgent', st.endsAt - now <= 10000);
+      setArenaTimer(app, fmtTime(st.endsAt - now), st.endsAt - now <= 10000);
     }
   }
 
@@ -485,19 +535,29 @@ function mountPlay(ctx, { redLabel, blueLabel } = {}) {
   return { update, tick, wrongKinds };
 }
 
+// 依出招方式掛上作答區（評量式＝題庫；發展式＝解題板）
+function mountAny(ctx, arenaOpts = {}) {
+  if (ctx.play === 'steps' && stepsMod) {
+    const m = stepsMod.mountSteps(ctx, arenaOpts, { app, arenaHtml, updateArena, setArenaTimer, toast, fmtTime, TEAM_NAME, teamInfo });
+    ctx.labels = m.labels;
+    return m;
+  }
+  return mountPlay(ctx, arenaOpts);
+}
+
 function renderEnded(ctx, state, wrongKinds, { solo = false, onAgain } = {}) {
   const w = state.winner;
-  const mine = w === 'draw' ? '雙方一樣' : w === ctx.team ? (solo ? '你贏了！' : '你們贏了！') : '這局輸了，看看下面要複習的地方';
+  const mine = w === 'draw' ? '雙方剩餘血量比例相同' : w === ctx.team ? (solo ? '你贏了！' : '你們贏了！') : '這局輸了，看看下面要複習的地方';
   const me = state.players?.[ctx.id] || { correct: 0, wrong: 0 };
   const t = L.teamStats(state);
-  const labels = ctx.bank.misconceptions || {};
+  const labels = ctx.labels || ctx.bank?.misconceptions || {};
   const review = [...(wrongKinds || new Map()).entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
   app.innerHTML = `
   <section class="panel result ${w}">
     <p class="muted">${REASON[state.endReason] || ''}</p>
     <h2 class="result-title">${w === 'draw' ? '平手' : `${solo ? (w === 'red' ? '你' : '電腦') : TEAM_NAME[w]}獲勝`}</h2>
     <p class="result-mine">${mine}</p>
-    ${ropeHtml(solo ? { redLabel: '你', blueLabel: '電腦' } : {})}
+    ${arenaHtml(solo ? SOLO_ARENA : {})}
     <div class="stats-row">
       <div><b>${me.correct}</b><span>你答對</span></div>
       <div><b>${me.wrong}</b><span>你答錯</span></div>
@@ -506,7 +566,8 @@ function renderEnded(ctx, state, wrongKinds, { solo = false, onAgain } = {}) {
     ${review.length ? `<div class="review"><b>這局要回頭想一想的地方：</b><ul>${review.map(([k, n]) => `<li>${escapeHtml(labels[k] || k)}（${n} 次）</li>`).join('')}</ul></div>` : ''}
     ${solo ? '<div class="row center"><button class="primary" data-again>再玩一次</button></div>' : '<p class="muted center">等待老師按「再來一局」…</p>'}
   </section>`;
-  updateRope(app, state.rope, solo ? {} : teamInfo(state));
+  updateArena(app, state, solo ? {} : teamInfo(state));
+  setArenaTimer(app, '結束');
   if (onAgain) $('[data-again]').addEventListener('click', onAgain);
 }
 
@@ -556,7 +617,11 @@ async function studentMain(rawCode) {
   const ns = room.state.ns || 'class';
   const bankKey = bankKeyOf(room.state.bank);
   const bank = await loadBank(bankKey);
-  setHeader(bank, be);
+  const { play: playMode, content: contentId } = L.normalizePlay(room.state.play, room.state.content);
+  if (playMode === 'steps') {
+    await loadSteps();
+    setHeader({ title: `發展式出招・${STEP_TITLES[contentId] || contentId}` }, be);
+  } else setHeader(bank, be);
   const idKey = `player:${code}`;
 
   async function enter(id) {
@@ -581,13 +646,13 @@ async function studentMain(rawCode) {
     let screen = null, play = null, rejoining = false, ending = false;
     const jitter = 500 + Math.random() * 1500;
     const ctx = {
-      room: code, id, team, bank, bankKey, state: null,
+      room: code, id, team, bank, bankKey, play: playMode, content: contentId, state: null,
       getState: () => ctx.state,
       async submit(correct, weight, factor) {
-        let out = { pullApplied: 0, endedNow: false };
+        let out = { damage: 0, combo: false, endedNow: false };
         const state = await be.transact(GAME, code, (s) => {
           const r = L.applyAnswer(s, { id, correct, weight, factor }, Date.now());
-          out = { pullApplied: r.pullApplied, endedNow: r.endedNow };
+          out = { damage: r.damage, combo: r.combo, endedNow: r.endedNow };
           return r.state;
         });
         ctx.state = state;
@@ -604,12 +669,15 @@ async function studentMain(rawCode) {
       <section class="panel waiting">
         <p class="muted">房號 ${escapeHtml(code)}・${escapeHtml(id)}</p>
         <div class="team-big ${ctx.team}">你在${TEAM_NAME[ctx.team]}</div>
-        <p>${ctx.team === 'red' ? '答對會把旗子往左拉' : '答對會把旗子往右拉'}，拉到底直接獲勝；時間到看旗子在哪一邊。</p>
+        <p>答對就攻擊${TEAM_NAME[L.otherTeam(ctx.team)]}的角色；把對方血量打到 0 立即獲勝，時間到比剩餘血量比例。答錯不扣自己的血。</p>
         <div class="stats-row"><div><b data-w-red>${t.red.players}</b><span>紅隊人數</span></div><div><b data-w-blue>${t.blue.players}</b><span>藍隊人數</span></div></div>
+        <div class="panel arena-panel">${arenaHtml()}</div>
         <p class="pulse">等待老師按「開始」…</p>
         <button class="ghost" data-switch>不是我？換人</button>
       </section>`;
       $('[data-switch]').addEventListener('click', () => { forget(GAME, idKey); location.reload(); });
+      updateArena(app, s, teamInfo(s));
+      setArenaTimer(app, '待開始');
     }
 
     function onState(s) {
@@ -631,9 +699,10 @@ async function studentMain(rawCode) {
           const t = L.teamStats(s);
           $('[data-w-red]').textContent = t.red.players;
           $('[data-w-blue]').textContent = t.blue.players;
+          updateArena(app, s, teamInfo(s));
         }
       } else if (s.status === 'playing') {
-        if (screen !== 'playing') { screen = 'playing'; play = mountPlay(ctx); }
+        if (screen !== 'playing') { screen = 'playing'; play = mountAny(ctx); }
         play.update();
       } else if (s.status === 'ended') {
         if (screen !== 'ended') { screen = 'ended'; renderEnded(ctx, s, play?.wrongKinds); play = null; }
@@ -663,29 +732,36 @@ async function studentMain(rawCode) {
 // ====================================================================
 // 單人練習（對電腦）
 // ====================================================================
+// 電腦每 every 毫秒攻擊你一次，造成 hit 點傷害（你的血量 100）
 const DIFFICULTY = {
-  easy: { name: '簡單', every: 6000, pull: 3 },
-  normal: { name: '普通', every: 4000, pull: 4 },
-  hard: { name: '困難', every: 2500, pull: 4 },
+  easy: { name: '簡單', every: 8000, hit: 5 },
+  normal: { name: '普通', every: 6000, hit: 6 },
+  hard: { name: '困難', every: 4000, hit: 6 },
 };
 const SOLO_SEC = 180;
+const SOLO_ARENA = { redLabel: '你', blueLabel: '電腦', redIcon: '🥊', blueIcon: '🤖' };
 
 async function soloMain() {
   const be = await getBackend();
   const ns = queryParam('ns') === 'demo' ? 'demo' : 'class';
   const bankKey = bankKeyOf(queryParam('bank'));
   const bank = await loadBank(bankKey);
-  setHeader(bank, be);
+  const { play: playMode, content: contentId } = L.normalizePlay(queryParam('play'), queryParam('content'));
+  if (playMode === 'steps') {
+    await loadSteps();
+    setHeader({ title: `發展式出招・${STEP_TITLES[contentId] || contentId}` }, be);
+  } else setHeader(bank, be);
   const isClass = ns !== 'demo';
   const prefill = recall(GAME, `solo-player:${ns}`) || '';
   let diff = recall(GAME, 'solo-difficulty') || 'normal';
 
   app.innerHTML = `
   <section class="panel identity">
-    <h2>單人練習：和電腦拔河</h2>
-    <p class="muted">${SOLO_SEC / 60} 分鐘內把旗子拉到你這邊。電腦會固定時間自動拉一次。</p>
+    <h2>單人練習：和電腦格鬥</h2>
+    <p class="muted">${SOLO_SEC / 60} 分鐘內把電腦的血量打到 0。${playMode === 'steps' ? '在解題板上每完成一步就攻擊電腦（整題最後一步是最後一擊）' : '答對就攻擊電腦'}；電腦每隔幾秒會打你一下，你的血量歸零就輸了。</p>
+    <p class="small">出招方式：<a href="?mode=solo${ns === 'demo' ? '&ns=demo' : ''}">評量式（題庫）</a>${L.STEP_CONTENTS.map((c) => `・<a href="?mode=solo&play=steps&content=${c}${ns === 'demo' ? '&ns=demo' : ''}">${escapeHtml(STEP_TITLES[c] || c)}</a>`).join('')}（目前：${escapeHtml(playMode === 'steps' ? STEP_TITLES[contentId] : '評量式')}）</p>
     <input id="id-input" value="${escapeHtml(prefill)}" placeholder="${isClass ? '班級-座號，例如 715-08' : '暱稱（1～12 字）'}" autocomplete="off" aria-label="身分">
-    <div class="row diff-row">${Object.entries(DIFFICULTY).map(([k, d]) => `<button class="diff ${k === diff ? 'on' : ''}" data-diff="${k}">${d.name}<small>每 ${d.every / 1000} 秒拉 ${d.pull}</small></button>`).join('')}</div>
+    <div class="row diff-row">${Object.entries(DIFFICULTY).map(([k, d]) => `<button class="diff ${k === diff ? 'on' : ''}" data-diff="${k}">${d.name}<small>每 ${d.every / 1000} 秒打你 ${d.hit}</small></button>`).join('')}</div>
     <button class="primary big-btn" id="solo-start">開始練習</button>
     <p class="error hidden" id="id-error"></p>
   </section>`;
@@ -708,14 +784,14 @@ async function soloMain() {
   function startSolo(id, diffKey) {
     const D = DIFFICULTY[diffKey];
     const now = Date.now();
-    const base = L.newRoomState({ ns, bank: bankKey, durationSec: SOLO_SEC });
-    base.players[id] = { team: 'red', correct: 0, wrong: 0, joinedAt: now };
+    const base = L.newRoomState({ ns, bank: bankKey, durationSec: SOLO_SEC, play: playMode, content: contentId });
+    base.players[id] = { team: 'red', correct: 0, wrong: 0, streak: 0, joinedAt: now };
     let state = L.startMatch(base, now, SOLO_SEC);
     let finished = false;
-    logEvent({ game: GAME, room: null, player: id, kind: 'match_start', payload: { solo: true, difficulty: diffKey, durationSec: SOLO_SEC, ns, bank: bankKey } });
+    logEvent({ game: GAME, room: null, player: id, kind: 'match_start', payload: { solo: true, difficulty: diffKey, durationSec: SOLO_SEC, ns, bank: bankKey, play: playMode, content: contentId } });
 
     const ctx = {
-      room: null, id, team: 'red', bank, bankKey,
+      room: null, id, team: 'red', bank, bankKey, play: playMode, content: contentId,
       getState: () => state,
       async submit(correct, weight, factor) {
         const r = L.applyAnswer(state, { id, correct, weight, factor }, Date.now());
@@ -724,14 +800,14 @@ async function soloMain() {
         if (r.endedNow) finish();
         return r;
       },
-      ropeInfo: (s) => ({ red: `答對 ${s.players[id].correct}`, blue: D.name }),
+      arenaInfo: (s) => ({ red: `答對 ${s.players[id].correct}`, blue: `${D.name}・每 ${D.every / 1000} 秒` }),
     };
-    const play = mountPlay(ctx, { redLabel: '你', blueLabel: '電腦' });
+    const play = mountAny(ctx, SOLO_ARENA);
 
     const bot = setInterval(() => {
       if (state.status !== 'playing') return;
-      state = { ...state, rope: L.clampRope(state.rope + D.pull) };
-      if (state.rope >= L.ROPE_LIMIT) state = L.endMatch(state, 'rope', Date.now());
+      const s = L.botAttack(state, D.hit, Date.now(), 'red');
+      if (s) state = s;
       play.update();
       if (state.status === 'ended') finish();
     }, D.every);
@@ -742,7 +818,7 @@ async function soloMain() {
       clearInterval(bot);
       tickFn = null;
       const me = state.players[id];
-      logEvent({ game: GAME, room: null, player: id, kind: 'match_end', payload: { solo: true, difficulty: diffKey, round: 1, rope: state.rope, winner: state.winner, reason: state.endReason, durationSec: SOLO_SEC, playedMs: state.endedAt - state.startedAt, correct: me.correct, wrong: me.wrong, ns, bank: bankKey } });
+      logEvent({ game: GAME, room: null, player: id, kind: 'match_end', payload: { solo: true, difficulty: diffKey, round: 1, hp: state.hp, maxHp: state.maxHp, winner: state.winner, reason: state.endReason, durationSec: SOLO_SEC, playedMs: state.endedAt - state.startedAt, correct: me.correct, wrong: me.wrong, ns, bank: bankKey, play: playMode, content: contentId } });
       renderEnded(ctx, state, play.wrongKinds, { solo: true, onAgain: () => startSolo(id, diffKey) });
     }
 

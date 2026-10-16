@@ -1,4 +1,4 @@
-// 拔河對戰純邏輯測試：node --test tests/tug-of-war/
+// 紅藍格鬥（扣血對戰，資料夾沿用 tug-of-war）純邏輯測試：node --test tests/tug-of-war/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as L from '../../site/games/tug-of-war/logic.js';
@@ -145,22 +145,34 @@ test('加入人數上限', () => {
   assert.match(r.error, /已滿/);
 });
 
-test('clampRope 與 judge', () => {
-  assert.equal(L.clampRope(150), 100);
-  assert.equal(L.clampRope(-150), -100);
-  assert.equal(L.clampRope(12.345), 12.3);
-  assert.equal(L.judge(-0.1), 'red');
-  assert.equal(L.judge(3), 'blue');
-  assert.equal(L.judge(0), 'draw');
+test('血量：依對手人數 1／2／3+ 人 = 100／150／200', () => {
+  assert.equal(L.hpForSize(1), 100);
+  assert.equal(L.hpForSize(2), 150);
+  assert.equal(L.hpForSize(3), 200);
+  assert.equal(L.hpForSize(25), 200);
+  assert.deepEqual(L.hpFromSizes(1, 1), { red: 100, blue: 100 });
+  assert.deepEqual(L.hpFromSizes(1, 2), { red: 150, blue: 100 }, '紅 1 人對藍 2 人：紅隊血較厚');
+  assert.deepEqual(L.hpFromSizes(12, 13), { red: 200, blue: 200 });
+  assert.deepEqual(L.hpFromSizes(0, 0), { red: 100, blue: 100 });
 });
 
-test('pullAmount：人數校正與最小值', () => {
-  assert.equal(L.pullAmount(1, 1), 4);
-  assert.equal(L.pullAmount(1, 3), 4);
-  assert.equal(L.pullAmount(2, 6), 4);
-  assert.equal(L.pullAmount(1, 15), 0.8);
-  assert.equal(L.pullAmount(1, 1, 0.5), 2);
-  assert.equal(L.pullAmount(1, 500), 0.5);
+test('damageAmount：星等換算、人數校正、再試減半、連擊、至少 1', () => {
+  assert.equal(L.damageAmount(1, 1), 10);
+  assert.equal(L.damageAmount(2, 1), 14);
+  assert.equal(L.damageAmount(3, 3), 18);
+  assert.equal(L.damageAmount(1, 6), 5, '6 人隊：× 3 ÷ 6');
+  assert.equal(L.damageAmount(3, 10), 5, '18 × 3 ÷ 10 = 5.4 → 5');
+  assert.equal(L.damageAmount(1, 1, 0.5), 5, '再試一次減半');
+  assert.equal(L.damageAmount(1, 1, 1, 1), 10, '第 2 題連對還沒有加成');
+  assert.equal(L.damageAmount(1, 1, 1, 2), 12, '第 3 題連對起 ×1.2');
+  assert.equal(L.damageAmount(1, 1, 1, 9), 12, '加成不往上疊');
+  assert.equal(L.damageAmount(1, 500), 1, '至少 1');
+});
+
+test('judgeHp：比剩餘血量比例，相同平手', () => {
+  assert.equal(L.judgeHp({ red: 50, blue: 60 }, { red: 100, blue: 200 }), 'red', '50% 勝 30%');
+  assert.equal(L.judgeHp({ red: 50, blue: 100 }, { red: 100, blue: 200 }), 'draw');
+  assert.equal(L.judgeHp({ red: 10, blue: 20 }, { red: 100, blue: 100 }), 'blue');
 });
 
 function playingRoom(n = 2) {
@@ -169,56 +181,73 @@ function playingRoom(n = 2) {
   return L.startMatch(s, 1000);
 }
 
-test('開始比賽：只能從 waiting 開始，設定 endsAt', () => {
+test('開始比賽：只能從 waiting 開始，設定 endsAt，依人數鎖定血量', () => {
   const s = playingRoom();
   assert.equal(s.status, 'playing');
   assert.equal(s.endsAt, 1000 + 60000);
+  assert.deepEqual(s.maxHp, { red: 100, blue: 100 });
+  assert.deepEqual(s.hp, { red: 100, blue: 100 });
   assert.equal(L.startMatch(s, 2000), undefined);
   const custom = L.startMatch(L.newRoomState(), 0, 120);
   assert.equal(custom.endsAt, 120000);
+  const big = playingRoom(7); // 紅 4、藍 3
+  assert.deepEqual(big.maxHp, { red: 200, blue: 200 });
+  // 開賽後才加入的人不改變已鎖定的血量
+  const late = L.joinPlayer(playingRoom(3), 'late', 2000).state; // 紅 2 藍 1 → 開賽鎖定 紅100 藍150
+  assert.deepEqual(late.maxHp, { red: 100, blue: 150 });
 });
 
-test('applyAnswer：紅隊負向、藍隊正向、答錯不拉繩但記錄、不改原物件', () => {
+test('applyAnswer：答對扣對手血、答錯不攻擊也不扣自己血、不改原物件', () => {
   const s = playingRoom(2);
   const r1 = L.applyAnswer(s, { id: 'p0', correct: true, weight: 1 }, 2000);
-  assert.equal(r1.state.rope, -4);
-  assert.equal(r1.pullApplied, 4);
-  assert.equal(s.rope, 0, '不應改到傳入的 state');
+  assert.deepEqual(r1.state.hp, { red: 100, blue: 90 });
+  assert.equal(r1.damage, 10);
+  assert.equal(s.hp.blue, 100, '不應改到傳入的 state');
   const r2 = L.applyAnswer(r1.state, { id: 'p1', correct: true, weight: 2 }, 2000);
-  assert.equal(r2.state.rope, 4);
+  assert.deepEqual(r2.state.hp, { red: 86, blue: 90 });
   const r3 = L.applyAnswer(r2.state, { id: 'p1', correct: false, weight: 3 }, 2000);
-  assert.equal(r3.state.rope, 4);
-  assert.equal(r3.pullApplied, 0);
+  assert.deepEqual(r3.state.hp, { red: 86, blue: 90 });
+  assert.equal(r3.damage, 0);
   assert.equal(r3.state.players.p1.wrong, 1);
   assert.equal(r3.state.players.p1.correct, 1);
+  assert.equal(r3.state.players.p1.streak, 0, '答錯中斷連擊');
   assert.equal(L.applyAnswer(r3.state, { id: 'ghost', correct: true }, 2000).state, undefined);
 });
 
-test('applyAnswer：拉到 ±100 立即結束且只算到 100', () => {
+test('applyAnswer：連續答對第 3 題起 ×1.2', () => {
   let s = playingRoom(2);
-  s.rope = 98;
+  const dmg = [];
+  for (let i = 0; i < 4; i++) { const r = L.applyAnswer(s, { id: 'p0', correct: true, weight: 1 }, 2000); dmg.push(r.damage); s = r.state; }
+  assert.deepEqual(dmg, [10, 10, 12, 12]);
+  assert.equal(s.hp.blue, 56);
+});
+
+test('applyAnswer：血量歸零立即結束、只扣到 0、另一方勝', () => {
+  const s = playingRoom(2);
+  s.hp.red = 8;
   const r = L.applyAnswer(s, { id: 'p1', correct: true, weight: 3 }, 2000);
-  assert.equal(r.state.rope, 100);
-  assert.equal(r.pullApplied, 2);
+  assert.equal(r.state.hp.red, 0);
+  assert.equal(r.damage, 8);
   assert.equal(r.state.status, 'ended');
   assert.equal(r.state.winner, 'blue');
-  assert.equal(r.state.endReason, 'rope');
+  assert.equal(r.state.endReason, 'ko');
   assert.equal(r.endedNow, true);
   const after = L.applyAnswer(r.state, { id: 'p0', correct: true }, 2001);
   assert.equal(after.state, undefined, '結束後的作答不再改狀態');
 });
 
-test('applyAnswer：時間已過就改為結束、不拉繩', () => {
-  let s = playingRoom(2);
-  s.rope = -10;
+test('applyAnswer：時間已過就改為結束、不攻擊，依血量比例判勝', () => {
+  const s = playingRoom(2);
+  s.hp.blue = 40;
   const r = L.applyAnswer(s, { id: 'p1', correct: true }, s.endsAt);
-  assert.equal(r.pullApplied, 0);
+  assert.equal(r.damage, 0);
+  assert.equal(r.state.hp.red, 100);
   assert.equal(r.state.status, 'ended');
   assert.equal(r.state.winner, 'red');
   assert.equal(r.state.endReason, 'time');
 });
 
-test('到期推進：未到期不寫入、到期依 rope 判勝、0 為平手、只成功一次', () => {
+test('到期推進：未到期不寫入、到期依血量比例判勝、相同為平手、只成功一次', () => {
   const s = playingRoom(2);
   assert.equal(L.expireIfDue(s, s.endsAt - 1), undefined);
   const e = L.expireIfDue(s, s.endsAt);
@@ -226,13 +255,40 @@ test('到期推進：未到期不寫入、到期依 rope 判勝、0 為平手、
   assert.equal(e.winner, 'draw');
   assert.equal(L.expireIfDue(e, s.endsAt + 5000), undefined, '已結束的房間不再寫入');
   assert.equal(L.endMatch(e, 'teacher'), undefined);
+  // 血量上限不同時比「比例」
+  const u = playingRoom(3); // 紅 2 藍 1 → 紅 100、藍 150
+  u.hp = { red: 60, blue: 75 };
+  assert.equal(L.expireIfDue(u, u.endsAt).winner, 'red', '紅 60% 勝藍 50%');
   // 模擬 transact：多端同時到期，只有第一個改得動
   let db = s, writes = 0;
   for (let i = 0; i < 5; i++) { const n = L.expireIfDue(db, s.endsAt + i); if (n) { db = n; writes++; } }
   assert.equal(writes, 1);
 });
 
-test('再來一局：保留隊伍、歸零、局數 +1；比賽中不可重設', () => {
+test('老師提前結束：也依血量比例判勝', () => {
+  const s = playingRoom(2);
+  s.hp = { red: 30, blue: 31 };
+  const e = L.endMatch(s, 'teacher', 5000);
+  assert.equal(e.winner, 'blue');
+  assert.equal(e.endReason, 'teacher');
+});
+
+test('botAttack：單人練習電腦攻擊玩家，歸零即輸', () => {
+  const base = L.newRoomState({ durationSec: 60 });
+  base.players.me = { team: 'red', correct: 0, wrong: 0, streak: 0, joinedAt: 0 };
+  let s = L.startMatch(base, 0);
+  assert.deepEqual(s.maxHp, { red: 100, blue: 100 }, '對手（電腦）當 1 人算');
+  s = L.botAttack(s, 6, 1000);
+  assert.equal(s.hp.red, 94);
+  s.hp.red = 5;
+  s = L.botAttack(s, 6, 2000);
+  assert.equal(s.status, 'ended');
+  assert.equal(s.winner, 'blue');
+  assert.equal(s.endReason, 'ko');
+  assert.equal(L.botAttack(s, 6, 3000), undefined);
+});
+
+test('再來一局：保留隊伍、血量清空待重新鎖定、局數 +1；比賽中不可重設', () => {
   let s = playingRoom(4);
   s = L.applyAnswer(s, { id: 'p0', correct: true }, 2000).state;
   assert.equal(L.resetRound(s), undefined);
@@ -240,10 +296,21 @@ test('再來一局：保留隊伍、歸零、局數 +1；比賽中不可重設',
   const r = L.resetRound(s);
   assert.equal(r.status, 'waiting');
   assert.equal(r.round, 2);
-  assert.equal(r.rope, 0);
+  assert.equal(r.hp, null);
+  assert.equal(r.maxHp, null);
   assert.equal(r.winner, null);
   assert.equal(r.players.p0.correct, 0);
+  assert.equal(r.players.p0.streak, 0);
   assert.equal(r.players.p0.team, 'red');
+  assert.deepEqual(L.hpView(r).maxHp, { red: 150, blue: 150 }, '等待中顯示依目前人數的預覽');
+  assert.deepEqual(L.startMatch(r, 4000).hp, { red: 150, blue: 150 });
+});
+
+test('舊房間（rope 版資料）作答時自動補上血量', () => {
+  const s = playingRoom(2);
+  delete s.hp; delete s.maxHp; s.rope = 0;
+  const r = L.applyAnswer(s, { id: 'p0', correct: true }, 2000);
+  assert.deepEqual(r.state.hp, { red: 100, blue: 90 });
 });
 
 test('teamStats 加總', () => {
@@ -255,19 +322,19 @@ test('teamStats 加總', () => {
   assert.deepEqual(t.blue, { players: 1, correct: 0, wrong: 0 });
 });
 
-test('30 人整場作答後 state 仍遠小於 256KB', () => {
+test('30 人整場平均每人約 6～12 題答對可擊倒對手（不會打不完），state 仍很小', () => {
   let s = L.newRoomState();
-  for (let i = 1; i <= 30; i++) s = L.joinPlayer(s, `715-${String(i).padStart(2, '0')}`, Date.now()).state;
-  s = L.startMatch(s, Date.now());
-  for (let k = 0; k < 3000; k++) {
-    const id = `715-${String((k % 30) + 1).padStart(2, '0')}`;
-    const r = L.applyAnswer(s, { id, correct: k % 3 !== 0, weight: 1 + (k % 3) }, s.startedAt + 1000);
-    if (!r.state) break;
-    s = r.state;
-    if (s.status !== 'playing') s = L.resetRound(s) && L.startMatch(L.resetRound(s), s.endedAt);
+  for (let i = 1; i <= 30; i++) s = L.joinPlayer(s, `715-${String(i).padStart(2, '0')}`, 0).state;
+  s = L.startMatch(s, 0);
+  let n = 0;
+  while (s.status === 'playing' && n < 1000) {
+    const id = `715-${String((n % 15) * 2 + 1).padStart(2, '0')}`; // 只有紅隊答，且輪流（不連擊）
+    s = L.applyAnswer(s, { id, correct: true, weight: 1 }, 1000).state;
+    n++;
   }
-  const bytes = Buffer.byteLength(JSON.stringify(s));
-  assert.ok(bytes < 8 * 1024, `state 大小 ${bytes} bytes`);
+  assert.equal(s.winner, 'red');
+  assert.ok(n / 15 >= 6 && n / 15 <= 12, `紅隊每人平均 ${n / 15} 題`);
+  assert.ok(Buffer.byteLength(JSON.stringify(s)) < 8 * 1024);
 });
 
 test('summarize：逐人、每題、誤解排行（用 kind 分群）、排除不計分', () => {

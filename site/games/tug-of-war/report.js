@@ -1,4 +1,4 @@
-// 拔河對戰・學習報告：讀 mg_events → 逐人、每題、誤解排行、逐筆事件，並匯出 CSV
+// 紅藍格鬥（扣血對戰，資料夾沿用 tug-of-war）・學習報告：讀 mg_events → 逐人、每題、誤解排行、逐筆事件，並匯出 CSV
 import { getBackend } from '../../shared/backend.js';
 import { queryParam } from '../../shared/identity.js';
 import { toCsv, download } from '../../shared/csv.js';
@@ -28,9 +28,20 @@ function flatEvent(e) {
   return {
     id: e.id, created_at: e.created_at, room: e.room || '', player: e.player, kind: e.kind,
     qid: p.qid ?? '', type: p.type ?? '', given: p.given ?? '', correct: p.correct ?? '', misconception: p.misconception ?? '',
-    ms: p.ms ?? '', team: p.team ?? '', pullApplied: p.pullApplied ?? '', attempt: p.attempt ?? '', counted: p.counted ?? '',
+    ms: p.ms ?? '', team: p.team ?? '', damage: p.damage ?? p.pullApplied ?? '', attempt: p.attempt ?? '', counted: p.counted ?? '',
+    hpRed: p.hp?.red ?? '', hpBlue: p.hp?.blue ?? '', maxHpRed: p.maxHp?.red ?? '', maxHpBlue: p.maxHp?.blue ?? '', winner: p.winner ?? '',
     bank: p.bank ?? '', round: p.round ?? '', payload: p,
   };
+}
+
+const TEAM = { red: '紅隊', blue: '藍隊', draw: '平手' };
+// match_end：剩餘血量（新版 hp）；舊版拔河資料只有 rope
+function endText(r) {
+  const p = r.payload || {};
+  const who = TEAM[p.winner] ? (p.winner === 'draw' ? '平手' : `${TEAM[p.winner]}勝`) : '';
+  if (p.hp && p.maxHp) return `${who}・紅 ${p.hp.red}/${p.maxHp.red}・藍 ${p.hp.blue}/${p.maxHp.blue}・${p.reason || ''}`;
+  if (p.rope != null) return `${who}・舊版拔河 rope ${p.rope}`;
+  return who;
 }
 
 function render() {
@@ -82,8 +93,8 @@ function render() {
     { label: '對錯', html: (r) => (r.kind !== 'answer' ? '' : r.counted === false ? '不計' : r.correct ? '<span class="ok">對</span>' : '<span class="bad">錯</span>') },
     { label: '誤解', html: (r) => (r.misconception ? `<code>${escapeHtml(r.misconception)}</code>` : '') },
     { label: '秒', num: true, html: (r) => (r.ms !== '' ? (r.ms / 1000).toFixed(1) : '') },
-    { label: '拉力', key: 'pullApplied', num: true },
-    { label: '其他', html: (r) => (r.kind === 'answer' ? '' : `<code>${escapeHtml(JSON.stringify(r.payload))}</code>`) },
+    { label: '傷害', key: 'damage', num: true },
+    { label: '其他', html: (r) => (r.kind === 'answer' ? '' : r.kind === 'match_end' ? `${escapeHtml(endText(r))}` : `<code>${escapeHtml(JSON.stringify(r.payload))}</code>`) },
   ]);
   $('#out').classList.remove('hidden');
 }

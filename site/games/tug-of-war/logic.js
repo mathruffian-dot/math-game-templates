@@ -1,13 +1,25 @@
-// 拔河對戰：純邏輯（不碰 DOM、不連網路），瀏覽器與 node 測試共用。
+// 紅藍格鬥（扣血對戰）：純邏輯（不碰 DOM、不連網路），瀏覽器與 node 測試共用。
+// 資料夾與 game id 沿用 tug-of-war（網址已對外流通，勿改）。
 // 房間狀態的所有改動都寫成「輸入舊 state → 回傳新 state」，放進 backend.transact 使用；
 // 回傳 undefined 代表「不需要寫入」（例如比賽已結束）。
 import { plainMath } from './render-math.js';
 
 export const GAME = 'tug-of-war';
-export const ROPE_LIMIT = 100;        // |rope| ≥ 100 立即獲勝
+// 血量：依「對手」人數決定，開賽時鎖定（對手人多 → 攻擊來得快 → 你的血要厚）。
+// 1 人 100、2 人 150、3 人以上 200（比例精神同多項式除法格鬥場 360/540/720）。
+export const HP_BY_SIZE = [100, 100, 150, 200]; // 索引 = 人數；超過 3 人用最後一格
 export const COOLDOWN_MS = 3000;      // 答錯冷卻
-export const PULL_BASE = 12;          // 拉力基準：weight × 12 ÷ max(3, 隊伍人數)
-export const RETRY_FACTOR = 0.5;      // 看過診斷後再試一次答對，拉力減半
+export const DAMAGE_BASE = 10;        // weight 1 的傷害
+export const DAMAGE_STEP = 4;         // 每多 1 顆星 +4：weight 1/2/3 = 10/14/18
+export const SIZE_NORM = 3;           // 人數校正：傷害 × 3 ÷ max(3, 我方人數)，四捨五入、至少 1
+export const COMBO_AT = 3;            // 連續答對第 3 題起（含）有連擊加成
+export const COMBO_MULT = 1.2;        // 連擊加成 ×1.2（固定，不往上疊）
+export const RETRY_FACTOR = 0.5;      // 看過診斷後再試一次答對，傷害減半
+// 出招方式：quiz = 評量式（答題庫）；steps = 發展式（解題板一步步建構，重用 step-board 的 content）
+export const PLAY_MODES = ['quiz', 'steps'];
+export const STEP_CONTENTS = ['linear-equation', 'proportion', 'poly-division'];
+export const STEP_WEIGHT = 1;         // 發展式：每完成一步 = weight 1 的攻擊
+export const FINAL_STEP_WEIGHT = 2;   // 整題最後一步 = 最後一擊（weight 2）
 export const MAX_PLAYERS = 50;
 export const DEFAULT_DURATION_SEC = 300;
 export const KIND_RE = /^[a-z][a-z0-9_]*$/;
@@ -132,10 +144,20 @@ export function drawNext(deck, ids, rng = Math.random) {
 
 // ---------- 房間狀態 ----------
 // state = { v, ns, bank, status:'waiting'|'playing'|'ended', round, durationSec, startedAt, endsAt, endedAt,
-//           rope, winner:'red'|'blue'|'draw'|null, endReason:'rope'|'time'|'teacher'|null,
-//           players:{ [id]:{ team, correct, wrong, joinedAt } } }
-export function newRoomState({ ns = 'class', bank = 'default', durationSec = DEFAULT_DURATION_SEC } = {}) {
-  return { v: 1, ns, bank, status: 'waiting', round: 1, durationSec, startedAt: null, endsAt: null, endedAt: null, rope: 0, winner: null, endReason: null, players: {} };
+//           hp:{red,blue}|null, maxHp:{red,blue}|null（開賽時鎖定）,
+//           winner:'red'|'blue'|'draw'|null, endReason:'ko'|'time'|'teacher'|null,
+//           players:{ [id]:{ team, correct, wrong, streak, joinedAt } } }
+// 網址或房間的 play/content 正規化：不認得的出招方式回 quiz；steps 的 content 不認得就用第一個
+export function normalizePlay(play, content) {
+  if (play !== 'steps') return { play: 'quiz', content: null };
+  return { play: 'steps', content: STEP_CONTENTS.includes(content) ? content : STEP_CONTENTS[0] };
+}
+
+// 發展式：第 stepIndex 步（0 起算）完成時的攻擊權重
+export const stepAttackWeight = (stepIndex, stepCount) => (stepIndex >= stepCount - 1 ? FINAL_STEP_WEIGHT : STEP_WEIGHT);
+
+export function newRoomState({ ns = 'class', bank = 'default', durationSec = DEFAULT_DURATION_SEC, play = 'quiz', content = null } = {}) {
+  return { v: 2, ns, bank, ...normalizePlay(play, content), status: 'waiting', round: 1, durationSec, startedAt: null, endsAt: null, endedAt: null, hp: null, maxHp: null, winner: null, endReason: null, players: {} };
 }
 
 export function teamSize(state, team) {
@@ -158,16 +180,43 @@ export function joinPlayer(state, id, now = Date.now()) {
   if (Object.keys(state.players).length >= MAX_PLAYERS) return { state: undefined, error: `房間已滿（上限 ${MAX_PLAYERS} 人）` };
   const next = clone(state);
   const team = assignTeam(next.players, id);
-  next.players[id] = { team, correct: 0, wrong: 0, joinedAt: now };
+  next.players[id] = { team, correct: 0, wrong: 0, streak: 0, joinedAt: now };
   return { state: next, team, rejoin: false };
 }
 
-export const clampRope = (v) => Math.max(-ROPE_LIMIT, Math.min(ROPE_LIMIT, round1(v)));
-export const judge = (rope) => (rope < 0 ? 'red' : rope > 0 ? 'blue' : 'draw');
+export const otherTeam = (team) => (team === 'red' ? 'blue' : 'red');
 
-// 人數校正：每隊總拉力看「答對率 × 權重」，不是看人多
-export function pullAmount(weight = 1, size = 1, factor = 1) {
-  return Math.max(0.5, round1(((Number(weight) || 1) * PULL_BASE * factor) / Math.max(3, size)));
+export function hpForSize(size) {
+  const n = Math.max(0, Math.floor(Number(size) || 0));
+  return HP_BY_SIZE[Math.min(n, HP_BY_SIZE.length - 1)];
+}
+
+// 依目前人數算出兩隊血量上限：每隊的血量看「對手」人數（至少當 1 人算）
+export function hpFromSizes(redSize, blueSize) {
+  return { red: hpForSize(Math.max(1, blueSize)), blue: hpForSize(Math.max(1, redSize)) };
+}
+
+// 畫面用：開賽後回傳鎖定值；等待中回傳依目前人數的預覽
+export function hpView(state) {
+  if (state?.maxHp && state?.hp) return { hp: state.hp, maxHp: state.maxHp };
+  const maxHp = hpFromSizes(teamSize(state || {}, 'red'), teamSize(state || {}, 'blue'));
+  return { hp: { ...maxHp }, maxHp };
+}
+
+// 單次傷害：題目星等 → 基礎傷害，再做人數校正、連擊、再試減半；整數、至少 1
+export function damageAmount(weight = 1, size = 1, factor = 1, streakBefore = 0) {
+  const w = Math.max(1, Number(weight) || 1);
+  const combo = streakBefore + 1 >= COMBO_AT ? COMBO_MULT : 1;
+  const raw = ((DAMAGE_BASE + DAMAGE_STEP * (w - 1)) * factor * combo * SIZE_NORM) / Math.max(SIZE_NORM, size);
+  return Math.max(1, Math.round(raw));
+}
+
+// 剩餘血量比例高者勝（交叉相乘避免小數誤差），相同為平手
+export function judgeHp(hp, maxHp) {
+  if (!hp || !maxHp) return 'draw';
+  const r = Math.max(0, hp.red) * maxHp.blue;
+  const b = Math.max(0, hp.blue) * maxHp.red;
+  return r > b ? 'red' : b > r ? 'blue' : 'draw';
 }
 
 export function startMatch(state, now = Date.now(), durationSec) {
@@ -177,9 +226,12 @@ export function startMatch(state, now = Date.now(), durationSec) {
   next.durationSec = durationSec || next.durationSec || DEFAULT_DURATION_SEC;
   next.startedAt = now;
   next.endsAt = now + next.durationSec * 1000;
-  next.rope = 0;
+  next.maxHp = hpFromSizes(teamSize(next, 'red'), teamSize(next, 'blue'));
+  next.hp = { ...next.maxHp };
+  delete next.rope;
   next.winner = null;
   next.endReason = null;
+  for (const p of Object.values(next.players)) p.streak = 0;
   return next;
 }
 
@@ -189,7 +241,10 @@ export function endMatch(state, reason = 'time', now = Date.now()) {
   next.status = 'ended';
   next.endedAt = now;
   next.endReason = reason;
-  next.winner = judge(next.rope);
+  if (!next.hp || !next.maxHp) Object.assign(next, clone(hpView(next)));
+  if (reason === 'ko' && next.hp.red <= 0 && next.hp.blue > 0) next.winner = 'blue';
+  else if (reason === 'ko' && next.hp.blue <= 0 && next.hp.red > 0) next.winner = 'red';
+  else next.winner = judgeHp(next.hp, next.maxHp);
   return next;
 }
 
@@ -199,39 +254,53 @@ export function expireIfDue(state, now = Date.now()) {
   return endMatch(state, 'time', now);
 }
 
-// 再來一局：保留隊伍，歸零繩子與答對數
+// 再來一局：保留隊伍；血量等開賽時依人數重新鎖定；答對數與連擊歸零
 export function resetRound(state) {
   if (!state || state.status === 'playing') return undefined;
   const next = clone(state);
   next.status = 'waiting';
   next.round = (next.round || 1) + 1;
-  Object.assign(next, { startedAt: null, endsAt: null, endedAt: null, rope: 0, winner: null, endReason: null });
-  for (const p of Object.values(next.players)) { p.correct = 0; p.wrong = 0; }
+  Object.assign(next, { startedAt: null, endsAt: null, endedAt: null, hp: null, maxHp: null, winner: null, endReason: null });
+  delete next.rope;
+  for (const p of Object.values(next.players)) { p.correct = 0; p.wrong = 0; p.streak = 0; }
   return next;
 }
 
-// 學生作答後的狀態更新。回傳 { state, pullApplied, endedNow }
+// 學生作答後的狀態更新。回傳 { state, damage, combo, endedNow }
+// 答對：攻擊對手扣 damage；答錯：不攻擊、不扣自己血，只記錄並中斷連擊。
 export function applyAnswer(state, { id, correct, weight = 1, factor = 1 }, now = Date.now()) {
-  if (!state || state.status !== 'playing') return { state: undefined, pullApplied: 0, endedNow: false };
-  if (state.endsAt && now >= state.endsAt) return { state: endMatch(state, 'time', now), pullApplied: 0, endedNow: true };
-  const me = state.players?.[id];
-  if (!me) return { state: undefined, pullApplied: 0, endedNow: false };
+  const none = { state: undefined, damage: 0, combo: false, endedNow: false };
+  if (!state || state.status !== 'playing') return none;
+  if (state.endsAt && now >= state.endsAt) return { ...none, state: endMatch(state, 'time', now), endedNow: true };
+  if (!state.players?.[id]) return none;
   const next = clone(state);
+  if (!next.hp || !next.maxHp) Object.assign(next, clone(hpView(next))); // 舊房間資料相容
   const p = next.players[id];
-  let pullApplied = 0;
-  if (correct) {
-    p.correct += 1;
-    const before = next.rope;
-    next.rope = clampRope(before + (p.team === 'blue' ? 1 : -1) * pullAmount(weight, teamSize(next, p.team), factor));
-    pullApplied = round1(Math.abs(next.rope - before));
-    if (Math.abs(next.rope) >= ROPE_LIMIT) {
-      const ended = endMatch(next, 'rope', now);
-      return { state: ended, pullApplied, endedNow: true };
-    }
-  } else {
+  if (!correct) {
     p.wrong += 1;
+    p.streak = 0;
+    return { state: next, damage: 0, combo: false, endedNow: false };
   }
-  return { state: next, pullApplied, endedNow: false };
+  const streakBefore = p.streak || 0;
+  p.correct += 1;
+  p.streak = streakBefore + 1;
+  const foe = otherTeam(p.team);
+  const before = next.hp[foe];
+  next.hp[foe] = Math.max(0, before - damageAmount(weight, teamSize(next, p.team), factor, streakBefore));
+  const damage = before - next.hp[foe];
+  const combo = streakBefore + 1 >= COMBO_AT;
+  if (next.hp[foe] <= 0) return { state: endMatch(next, 'ko', now), damage, combo, endedNow: true };
+  return { state: next, damage, combo, endedNow: false };
+}
+
+// 單人練習：電腦攻擊玩家（預設紅隊）。回傳新 state；已結束回傳 undefined
+export function botAttack(state, dmg, now = Date.now(), target = 'red') {
+  if (!state || state.status !== 'playing') return undefined;
+  if (state.endsAt && now >= state.endsAt) return endMatch(state, 'time', now);
+  const next = clone(state);
+  if (!next.hp || !next.maxHp) Object.assign(next, clone(hpView(next)));
+  next.hp[target] = Math.max(0, next.hp[target] - Math.max(1, Math.round(dmg)));
+  return next.hp[target] <= 0 ? endMatch(next, 'ko', now) : next;
 }
 
 export function teamStats(state) {

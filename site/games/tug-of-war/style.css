@@ -1,5 +1,4 @@
-/* 拔河對戰：遊戲專用樣式（色彩 token 沿用 ../../shared/base.css） */
-:root { --rope: #a0743b; --flag: #f2b705; }
+/* 紅藍格鬥（扣血對戰，資料夾沿用 tug-of-war）：遊戲專用樣式（色彩 token 沿用 ../../shared/base.css） */
 
 .topbar { background: var(--panel); border-bottom: 1px solid var(--line); }
 .topbar-inner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
@@ -20,26 +19,47 @@ h2 { margin: 0 0 12px; font-size: 22px; }
 .team-tag.red { background: var(--red); }
 .team-tag.blue { background: var(--blue); }
 
-/* ---------- 拔河繩 ---------- */
-.rope { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
-.rope-end { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 64px; }
-.rope-info { font-size: 13px; color: var(--muted); white-space: nowrap; }
-.rope-track { position: relative; height: 56px; }
-.win-zone { position: absolute; top: 8px; bottom: 8px; width: 4%; border-radius: 6px; opacity: .35; }
-.win-zone.red { left: 0; background: var(--red); }
-.win-zone.blue { right: 0; background: var(--blue); }
-.rope-line { position: absolute; left: 0; right: 0; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px;
-  background: repeating-linear-gradient(60deg, var(--rope) 0 8px, #c89b5d 8px 14px); }
-.center-line { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 2px dashed var(--muted); }
-.flag { position: absolute; top: 4px; width: 28px; height: 44px; margin-left: -5px; left: 50%; transition: left .45s cubic-bezier(.2,.8,.3,1.2); }
-.flag svg { width: 28px; height: 44px; overflow: visible; }
-.flag line { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
-.flag path { fill: var(--flag); stroke: var(--ink); stroke-width: 1.5; }
-.rope-track.tug-left { animation: tugL .35s ease; }
-.rope-track.tug-right { animation: tugR .35s ease; }
-@keyframes tugL { 40% { transform: translateX(-4px); } }
-@keyframes tugR { 40% { transform: translateX(4px); } }
-.rope-caption { text-align: center; margin: 4px 0 0; font-size: 15px; color: var(--muted); }
+/* ---------- 格鬥場：角色卡＋血條 ---------- */
+.arena { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: 8px; }
+.fighter { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); }
+.fighter.red { border-color: var(--red); background: var(--red-soft); }
+.fighter.blue { border-color: var(--blue); background: var(--blue-soft); }
+.fighter-top { display: flex; justify-content: center; max-width: 100%; }
+.fighter-top .team-tag { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.fighter-icon { font-size: 44px; line-height: 1.1; }
+.fighter.blue .fighter-icon { transform: scaleX(-1); } /* 兩個角色面對面 */
+.fighter.down .fighter-icon { filter: grayscale(1); opacity: .45; transform: rotate(-80deg); }
+.hp-bar { width: 100%; height: 18px; border-radius: 9px; background: var(--line); overflow: hidden; border: 1px solid rgba(0,0,0,.15); }
+.hp-bar span { display: block; height: 100%; width: 100%; border-radius: 9px; transition: width .4s ease, background-color .4s ease; }
+.hp-bar span.hi { background: var(--ok); }
+.hp-bar span.mid { background: #e0a100; }
+.hp-bar span.low { background: var(--red); }
+.fighter.blue .hp-bar span { margin-left: auto; } /* 藍隊血條從右邊扣 */
+.hp-num { font-variant-numeric: tabular-nums; font-size: 15px; white-space: nowrap; }
+.hp-num b { font-size: 24px; }
+.fighter-info { font-size: 13px; color: var(--muted); text-align: center; overflow-wrap: anywhere; }
+.arena-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 56px; }
+.vs { font-size: 22px; font-weight: 900; color: var(--muted); }
+.arena-timer { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 22px; white-space: nowrap; }
+.arena-timer.urgent { color: var(--red); animation: pulse 1s infinite; }
+.arena-caption { text-align: center; margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.hit-pop { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); font-size: 26px; font-weight: 900; color: var(--red);
+  pointer-events: none; opacity: 0; text-shadow: 0 1px 0 #fff; }
+.fighter.hit { animation: hitShake .45s ease, hitFlash .45s ease; }
+.fighter.hit .hit-pop { animation: popUp .9s ease-out; }
+@keyframes hitShake { 15% { transform: translateX(-6px); } 35% { transform: translateX(6px); } 55% { transform: translateX(-4px); } 75% { transform: translateX(3px); } }
+@keyframes hitFlash { 0%, 40% { box-shadow: 0 0 0 4px rgba(214, 69, 69, .75); background: #f8b4b4; } }
+@keyframes popUp { 0% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -28px); } }
+@media (prefers-reduced-motion: reduce) {
+  .fighter.hit, .fighter.hit .hit-pop, .arena-timer.urgent, .pulse, .timer.urgent { animation: none; }
+  .fighter.hit { box-shadow: 0 0 0 4px rgba(214, 69, 69, .75); }
+  .fighter.hit .hit-pop { opacity: 1; }
+  .hp-bar span { transition: none; }
+}
+.arena-panel { padding: 10px; }
+.play .arena-panel { position: sticky; top: 0; z-index: 5; }
+.waiting .arena-panel { margin: 12px 0; text-align: left; }
 
 /* ---------- 首頁、身分 ---------- */
 .home, .identity, .waiting, .result { max-width: 720px; margin: 16px auto; }
@@ -66,14 +86,13 @@ h2 { margin: 0 0 12px; font-size: 22px; }
 
 /* ---------- 作答工作區 ---------- */
 .play { display: flex; flex-direction: column; gap: 12px; max-width: 900px; margin: 0 auto; }
-.hud { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px;
+.hud { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .hud-stat { color: var(--muted); }
 .hud-stat b { color: var(--ink); }
 .timer { font-variant-numeric: tabular-nums; font-weight: 700; margin-left: auto; }
 .timer.big { font-size: 26px; }
 .timer.urgent { color: var(--red); animation: pulse 1s infinite; }
-.rope-panel { padding: 12px; }
 .qcard { padding: 16px 18px; }
 .q-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 14px; color: var(--muted); margin-bottom: 4px; }
 .retry-tag { color: var(--warn); font-weight: 700; }
@@ -127,7 +146,7 @@ h2 { margin: 0 0 12px; font-size: 22px; }
 .qr-box { flex: 0 0 auto; padding: 4px; min-width: 120px; min-height: 120px; background: #fff; }
 .qr-box img { display: block; width: 112px; height: 112px; }
 .room-main { flex: 1; min-width: 0; }
-.room-main .rope-end { min-width: 48px; }
+.room-main .fighter-icon { font-size: 34px; }
 .join-link { display: block; font-size: 12px; color: var(--muted); word-break: break-all; margin: 6px 0; }
 .room-actions button { flex: 1 1 auto; }
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 16px; }
@@ -140,10 +159,71 @@ h2 { margin: 0 0 12px; font-size: 22px; }
   .stem { font-size: 21px; }
   .room-body { flex-direction: column; align-items: stretch; }
   .qr-box { align-self: center; }
-  .rope-end { min-width: 48px; }
-  .rope-info { font-size: 11px; }
+  .arena { gap: 4px; }
+  .fighter { padding: 6px 4px; }
+  .fighter-icon { font-size: 34px; }
+  .hp-num b { font-size: 20px; }
+  .fighter-info { font-size: 11px; }
+  .arena-mid { min-width: 44px; }
+  .vs { font-size: 16px; }
+  .arena-timer { font-size: 17px; }
   .timer.big { font-size: 22px; }
 }
 @media print {
   .topbar, .teacher-controls, .room-actions, .room-main { display: none; }
 }
+
+/* ---------- 發展式出招：解題板（樣式改寫自 step-board，限定在 .sb 內避免互相影響） ---------- */
+.sb .p-figure svg { max-width: 100%; height: auto; }
+.sb .board { display: grid; gap: 8px; margin-bottom: 10px; }
+.sb .line { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; font-size: 22px; }
+.sb .line-no { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 14px; background: var(--bg); color: var(--muted); }
+.sb .line-body { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.sb .done-line { background: var(--ok-soft); }
+.sb .current-line { background: var(--blue-soft); outline: 2px solid var(--blue); }
+.sb .tok { white-space: nowrap; }
+.sb .line-frac > span { display: flex; justify-content: center; padding: 3px 4px; gap: 4px; }
+.sb .slot { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; min-height: 52px; padding: 3px; border-radius: 12px;
+  border: 2px dashed var(--muted); background: var(--panel); cursor: pointer; touch-action: manipulation; }
+.sb .slot.filled { border-style: solid; border-color: var(--blue); padding: 2px; }
+.sb .slot.wrong { border-color: var(--red); background: var(--red-soft); border-style: solid; }
+.sb .slot.done { cursor: default; border: none; background: transparent; min-width: 0; min-height: 0; padding: 0 2px; font-weight: 700; }
+.sb .slot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.sb .goal { display: grid; gap: 6px; font-size: 19px; }
+.sb .scaffold { font-size: 16px; padding: 8px 12px; border-radius: 10px; background: var(--warn-soft); }
+.sb .tray { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; margin: 12px 0; border-radius: 12px; background: var(--bg); min-height: 76px; }
+.sb .card { display: inline-flex; align-items: center; justify-content: center; min-width: 60px; min-height: 52px; padding: 6px 12px;
+  border: 2px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink);
+  font: inherit; font-size: 21px; font-weight: 600; box-shadow: 0 2px 0 var(--line); cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.sb .card.in-slot { min-width: 56px; min-height: 46px; box-shadow: none; border-color: transparent; background: var(--blue-soft); }
+.sb .card.selected { border-color: var(--accent); background: var(--blue-soft); transform: translateY(-3px); box-shadow: 0 4px 0 var(--accent); }
+.sb .card.used { opacity: .25; cursor: default; box-shadow: none; border-style: dashed; }
+.sb .card .frac, .sb .slot .frac { font-size: .85em; }
+.sb .m { display: inline; white-space: nowrap; }
+.sb .reveal { outline: 3px solid var(--warn); outline-offset: 2px; }
+.sb .hints { margin: 0 0 12px; padding-left: 0; list-style: none; display: grid; gap: 6px; font-size: 16px; }
+.sb .hints li { padding: 8px 12px; border-radius: 10px; background: var(--bg); }
+.sb .hints:empty { display: none; }
+.sb .actions { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; margin-top: 10px; }
+.sb .actions button { min-height: 56px; }
+.sb .shake { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.sb .longdiv { display: grid; grid-template-columns: auto repeat(var(--cols), minmax(64px, 1fr)); align-items: center; justify-items: center;
+  font-size: 21px; row-gap: 4px; margin-bottom: 8px; overflow-x: auto; }
+.sb .ld-colhead { font-size: 13px; color: var(--muted); }
+.sb .ld-label { justify-self: end; display: flex; align-items: center; gap: 2px; padding-right: 4px; white-space: nowrap; }
+.sb .ld-bracket { font-size: 34px; line-height: 1; font-weight: 300; }
+.sb .ld-quot { justify-self: stretch; display: flex; gap: 8px; align-items: center; min-height: 56px; padding: 0 6px; }
+.sb .ld-cell { justify-self: stretch; display: flex; justify-content: center; align-items: center; min-height: 56px; }
+.sb .ld-dividend { border-top: 3px solid var(--ink); }
+.sb .ld-bar { border-top: 2px solid var(--ink); }
+.sb .ld-current { background: var(--blue-soft); }
+@media (max-width: 520px) {
+  .sb .line, .sb .longdiv { font-size: 18px; }
+  .sb .card { font-size: 19px; min-width: 52px; }
+  .sb .slot { min-width: 56px; }
+  .sb .actions { grid-template-columns: 1fr 1fr; }
+  .sb .actions [data-check] { grid-column: span 2; }
+  .sb .longdiv { grid-template-columns: auto repeat(var(--cols), minmax(48px, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { .sb .shake { animation: none; } }
