@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>拖拉解題板</title>
+  <meta name="description" content="T3 拖拉建構解題板：一步一步拖卡片建立等式、代入、化簡，系統即時診斷誤解。">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 浮動狀態列：分數、連續一次成立、完成題數、剩餘時間 -->
+  <header class="statusbar" aria-live="polite">
+    <span class="brand">拖拉解題板</span>
+    <span class="chip">分數 <b id="st-score">0</b></span>
+    <span class="chip">連續一次成立 <b id="st-streak">0</b></span>
+    <span class="chip">完成 <b id="st-done">0</b> 題</span>
+    <span class="chip time">時間 <b id="st-time">自主練習</b></span>
+    <span class="chip who" id="who"></span>
+    <span class="mode-badge hidden" id="mode-badge" title="資料只存在這台裝置的瀏覽器">本機模式</span>
+  </header>
+
+  <main class="wrap">
+    <!-- 開始 -->
+    <section id="screen-start" class="screen panel narrow">
+      <h1>拖拉解題板 <span class="mode-badge" id="ns-badge"></span></h1>
+      <p class="muted">把卡片拖進空格（或先點卡片、再點空格），一步一步建立算式。每一步按「檢查這一步」，成立才往下。</p>
+      <form id="start-form">
+        <label for="player-input" id="id-label">班級-座號</label>
+        <div class="row">
+          <input id="player-input" autocomplete="off" inputmode="text" maxlength="12" required>
+        </div>
+        <div id="content-picker" class="picker"></div>
+        <button class="primary" id="start-btn" type="submit">開始</button>
+      </form>
+    </section>
+
+    <!-- 等待老師開始 -->
+    <section id="screen-wait" class="screen panel narrow hidden">
+      <h2>已加入課堂 <span id="wait-room"></span></h2>
+      <p>今天的內容：<b id="wait-content"></b></p>
+      <p class="muted">等老師按「開始」……畫面會自動切換。</p>
+    </section>
+
+    <!-- 作答 -->
+    <section id="screen-play" class="screen hidden">
+      <div class="work">
+        <div class="col-left panel">
+          <div class="p-title" id="p-title"></div>
+          <div class="p-stem" id="p-stem"></div>
+          <div class="p-figure hidden" id="p-figure"></div>
+          <div class="board" id="board" aria-label="解題板：完成的步驟保留在這裡"></div>
+        </div>
+        <div class="col-right panel">
+          <div class="goal">
+            <span class="step-no" id="step-no"></span>
+            <div id="step-goal"></div>
+            <div class="scaffold hidden" id="step-scaffold"></div>
+          </div>
+          <div class="feedback hidden" id="feedback" role="status"></div>
+          <div class="tray" id="tray" aria-label="卡片"></div>
+          <ol class="hints" id="hints"></ol>
+          <div class="actions">
+            <button type="button" id="hint-btn">提示（0/3）</button>
+            <button type="button" id="clear-btn">清空這一步</button>
+            <button type="button" id="check-btn" class="primary">檢查這一步</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 一題完成：整題過程回顧 -->
+    <section id="screen-review" class="screen panel hidden">
+      <div id="review"></div>
+      <div class="row end"><button type="button" class="primary" id="next-btn">下一題</button></div>
+    </section>
+
+    <!-- 課堂時間到 -->
+    <section id="screen-ended" class="screen panel narrow hidden">
+      <h2>時間到！</h2>
+      <div id="end-summary"></div>
+      <p class="muted">課堂紀錄已送給老師。想再多練幾題，可以進入自主練習（不計入這堂課）。</p>
+      <a class="btn" id="practice-link" href="./">自主練習</a>
+    </section>
+  </main>
+
+  <div class="toast hidden" id="toast" role="alert"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

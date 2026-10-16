@@ -1,0 +1,32 @@
+/* 共用基礎樣式：iPad 優先，觸控目標 ≥ 48px */
+:root {
+  --bg: #f6f4ee; --panel: #ffffff; --ink: #1f2430; --muted: #6b7280; --line: #d9d4c7;
+  --red: #d64545; --red-soft: #fde8e8; --blue: #2f6fd6; --blue-soft: #e5eefc;
+  --ok: #1f8a4c; --ok-soft: #e3f4ea; --warn: #b7791f; --warn-soft: #fdf3e1;
+  --accent: #6b4fd8; --radius: 14px; --shadow: 0 2px 10px rgba(0,0,0,.08);
+  --font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171c; --panel: #1f232b; --ink: #eef0f4; --muted: #9aa3b2; --line: #343a46;
+    --red-soft: #3a2224; --blue-soft: #1d2a40; --ok-soft: #173326; --warn-soft: #3a2e17;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 18px; line-height: 1.5; }
+body { min-height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); -webkit-tap-highlight-color: transparent; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
+button, .btn { min-height: 48px; min-width: 48px; padding: 10px 18px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+input, select { min-height: 48px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: 18px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.muted { color: var(--muted); }
+.hidden { display: none !important; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 12px 20px; border-radius: 12px; z-index: 50; max-width: 90vw; }
+.mode-badge { font-size: 13px; padding: 2px 10px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); }
+/* 數學記號：分數上下排列 */
+.frac { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; margin: 0 .15em; line-height: 1.1; }
+.frac > span:first-child { border-bottom: 2px solid currentColor; padding: 0 .2em; }
+.overline { text-decoration: overline; }

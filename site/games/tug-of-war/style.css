@@ -1,0 +1,149 @@
+/* 拔河對戰：遊戲專用樣式（色彩 token 沿用 ../../shared/base.css） */
+:root { --rope: #a0743b; --flag: #f2b705; }
+
+.topbar { background: var(--panel); border-bottom: 1px solid var(--line); }
+.topbar-inner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+.topbar h1 { margin: 0; font-size: 22px; }
+.topbar h1 a { color: inherit; text-decoration: none; }
+.small { font-size: 15px; }
+.center { text-align: center; justify-content: center; }
+.error { color: var(--red); font-weight: 600; }
+.ghost { background: transparent; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+h2 { margin: 0 0 12px; font-size: 22px; }
+.field { display: inline-flex; align-items: center; gap: 8px; }
+.field input { width: 96px; }
+.warn-box { background: var(--warn-soft); color: var(--ink); border: 1px solid var(--warn); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; font-size: 15px; }
+
+/* ---------- 隊伍標籤 ---------- */
+.team-tag { display: inline-flex; align-items: center; min-height: 32px; padding: 2px 12px; border-radius: 999px; font-weight: 700; color: #fff; white-space: nowrap; }
+.team-tag.red { background: var(--red); }
+.team-tag.blue { background: var(--blue); }
+
+/* ---------- 拔河繩 ---------- */
+.rope { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+.rope-end { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 64px; }
+.rope-info { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.rope-track { position: relative; height: 56px; }
+.win-zone { position: absolute; top: 8px; bottom: 8px; width: 4%; border-radius: 6px; opacity: .35; }
+.win-zone.red { left: 0; background: var(--red); }
+.win-zone.blue { right: 0; background: var(--blue); }
+.rope-line { position: absolute; left: 0; right: 0; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px;
+  background: repeating-linear-gradient(60deg, var(--rope) 0 8px, #c89b5d 8px 14px); }
+.center-line { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 2px dashed var(--muted); }
+.flag { position: absolute; top: 4px; width: 28px; height: 44px; margin-left: -5px; left: 50%; transition: left .45s cubic-bezier(.2,.8,.3,1.2); }
+.flag svg { width: 28px; height: 44px; overflow: visible; }
+.flag line { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+.flag path { fill: var(--flag); stroke: var(--ink); stroke-width: 1.5; }
+.rope-track.tug-left { animation: tugL .35s ease; }
+.rope-track.tug-right { animation: tugR .35s ease; }
+@keyframes tugL { 40% { transform: translateX(-4px); } }
+@keyframes tugR { 40% { transform: translateX(4px); } }
+.rope-caption { text-align: center; margin: 4px 0 0; font-size: 15px; color: var(--muted); }
+
+/* ---------- 首頁、身分 ---------- */
+.home, .identity, .waiting, .result { max-width: 720px; margin: 16px auto; }
+.home-links { margin-top: 16px; }
+.identity input { flex: 1 1 240px; }
+.identity > input { width: 100%; margin-bottom: 12px; }
+.diff-row { margin-bottom: 12px; }
+.diff { display: flex; flex-direction: column; align-items: center; flex: 1 1 120px; }
+.diff small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.diff.on { border: 2px solid var(--accent); background: var(--blue-soft); }
+.big-btn { width: 100%; min-height: 56px; font-size: 20px; }
+
+/* ---------- 等待 ---------- */
+.waiting { text-align: center; }
+.team-big { display: inline-block; font-size: 32px; font-weight: 800; color: #fff; padding: 12px 32px; border-radius: 16px; margin: 8px 0; }
+.team-big.red { background: var(--red); }
+.team-big.blue { background: var(--blue); }
+.pulse { font-weight: 700; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .4; } }
+.stats-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 12px 0; }
+.stats-row > div { display: flex; flex-direction: column; align-items: center; min-width: 88px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.stats-row b { font-size: 26px; }
+.stats-row span { font-size: 14px; color: var(--muted); }
+
+/* ---------- 作答工作區 ---------- */
+.play { display: flex; flex-direction: column; gap: 12px; max-width: 900px; margin: 0 auto; }
+.hud { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.hud-stat { color: var(--muted); }
+.hud-stat b { color: var(--ink); }
+.timer { font-variant-numeric: tabular-nums; font-weight: 700; margin-left: auto; }
+.timer.big { font-size: 26px; }
+.timer.urgent { color: var(--red); animation: pulse 1s infinite; }
+.rope-panel { padding: 12px; }
+.qcard { padding: 16px 18px; }
+.q-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+.retry-tag { color: var(--warn); font-weight: 700; }
+.stem { font-size: 24px; line-height: 1.6; margin: 4px 0 14px; }
+.stem sup, .opt sup, .order-item sup, .feedback sup { font-size: .7em; }
+.last-answer { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+.answer-area.locked { pointer-events: none; opacity: .75; }
+.options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.opt { min-height: 64px; font-size: 20px; font-weight: 600; text-align: left; padding: 10px 16px; }
+.opt.picked-ok { background: var(--ok-soft); border-color: var(--ok); }
+.opt.picked-bad { background: var(--red-soft); border-color: var(--red); }
+.opt:disabled { text-decoration: line-through; }
+.input-row { display: flex; gap: 10px; }
+.input-row input { flex: 1; font-size: 24px; min-height: 56px; }
+.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; max-width: 420px; }
+.keypad button { min-height: 52px; font-size: 22px; }
+.keypad .wide { grid-column: span 2; font-size: 18px; }
+.order-slots { margin: 0 0 10px; padding-left: 28px; display: flex; flex-direction: column; gap: 6px; min-height: 56px; }
+.order-slots .placeholder { color: var(--muted); list-style: none; margin-left: -28px; padding: 12px; border: 2px dashed var(--line); border-radius: 12px; }
+.order-pool { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.order-item { width: 100%; text-align: left; font-weight: 500; font-size: 18px; }
+.order-item.placed { background: var(--blue-soft); border-color: var(--blue); }
+
+.feedback { margin-top: 14px; padding: 12px 14px; border-radius: 12px; }
+.feedback.good { background: var(--ok-soft); border: 1px solid var(--ok); }
+.feedback.bad { background: var(--red-soft); border: 1px solid var(--red); }
+.feedback .row { margin-top: 10px; }
+.cool-bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+.cool-bar span { display: block; height: 100%; width: 0; background: var(--warn); }
+
+/* ---------- 結算 ---------- */
+.result { text-align: center; }
+.result-title { font-size: 34px; margin: 0; }
+.result.red .result-title { color: var(--red); }
+.result.blue .result-title { color: var(--blue); }
+.result-mine { font-size: 20px; font-weight: 700; }
+.review { text-align: left; background: var(--warn-soft); border-radius: 12px; padding: 10px 14px; margin: 12px 0; }
+.review ul { margin: 4px 0 0; }
+
+/* ---------- 老師端 ---------- */
+.teacher-controls { margin-bottom: 16px; }
+.teacher-controls .row + .row { margin-top: 10px; }
+.room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: 14px; }
+.room-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.room-code { font-size: 30px; font-weight: 800; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+.room-code.big { font-size: 56px; text-align: center; }
+.status-pill { font-size: 14px; padding: 4px 10px; border-radius: 999px; background: var(--line); }
+.status-pill.playing { background: var(--ok-soft); color: var(--ok); font-weight: 700; }
+.status-pill.ended { background: var(--warn-soft); color: var(--warn); }
+.room-body { display: flex; gap: 12px; align-items: center; }
+.qr-box { flex: 0 0 auto; padding: 4px; min-width: 120px; min-height: 120px; background: #fff; }
+.qr-box img { display: block; width: 112px; height: 112px; }
+.room-main { flex: 1; min-width: 0; }
+.room-main .rope-end { min-width: 48px; }
+.join-link { display: block; font-size: 12px; color: var(--muted); word-break: break-all; margin: 6px 0; }
+.room-actions button { flex: 1 1 auto; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 16px; }
+.overlay-box { background: #fff; color: #1f2430; border-radius: 16px; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.overlay-box img { max-width: 100%; height: auto; }
+
+/* ---------- 窄螢幕（iPad 直向分割畫面、手機） ---------- */
+@media (max-width: 640px) {
+  .options { grid-template-columns: 1fr; }
+  .stem { font-size: 21px; }
+  .room-body { flex-direction: column; align-items: stretch; }
+  .qr-box { align-self: center; }
+  .rope-end { min-width: 48px; }
+  .rope-info { font-size: 11px; }
+  .timer.big { font-size: 22px; }
+}
+@media print {
+  .topbar, .teacher-controls, .room-actions, .room-main { display: none; }
+}

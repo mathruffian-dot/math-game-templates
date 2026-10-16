@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>解題板老師端</title>
+  <meta name="description" content="T3 拖拉解題板老師端：開課堂、QR 加入、限時、即時看板與 CSV 匯出。">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <link rel="stylesheet" href="teacher.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="t-head">
+      <h1>拖拉解題板｜老師端 <span class="mode-badge hidden" id="mode-badge">本機模式</span></h1>
+      <p class="muted">開一間課堂 → 學生掃 QR 加入 → 按「開始」計時 → 看即時看板 → 下課前匯出 CSV。</p>
+    </header>
+
+    <!-- 開課堂 -->
+    <section class="panel" id="setup">
+      <h2>開新課堂</h2>
+      <div class="form-grid">
+        <label>內容
+          <select id="content-select"></select>
+        </label>
+        <label>時間（分鐘）
+          <input id="minutes" type="number" min="1" max="45" value="15">
+        </label>
+        <label>學生身分
+          <select id="ns-select">
+            <option value="class">班級-座號（班級版）</option>
+            <option value="demo">暱稱（試玩版）</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <button class="primary" id="create-btn">開新課堂</button>
+        <span class="muted">或回到已開的房號：</span>
+        <input id="reopen-code" maxlength="8" placeholder="房號" aria-label="房號">
+        <button id="reopen-btn">連線</button>
+      </div>
+    </section>
+
+    <!-- 房間 -->
+    <section class="panel hidden" id="room-panel">
+      <div class="room-grid">
+        <div>
+          <div class="muted">房號</div>
+          <div class="code" id="room-code"></div>
+          <div id="room-content" class="room-content"></div>
+          <div class="status-line">狀態：<b id="room-status"></b>　<span id="room-timer" class="timer"></span></div>
+          <div class="row">
+            <button class="primary" id="start-btn">開始</button>
+            <button id="extend-btn">延長 1 分鐘</button>
+            <button id="end-btn">提前結束</button>
+          </div>
+          <div class="link-row">
+            <input id="join-link" readonly aria-label="學生連結">
+            <button id="copy-btn">複製連結</button>
+          </div>
+        </div>
+        <div id="qr" class="qr"></div>
+      </div>
+    </section>
+
+    <!-- 即時看板 -->
+    <section class="panel hidden" id="dash">
+      <div class="dash-head">
+        <h2>即時看板 <span class="muted small" id="updated"></span></h2>
+        <div class="row">
+          <button id="csv-players">匯出逐人摘要 CSV</button>
+          <button id="csv-events">匯出逐筆事件 CSV</button>
+        </div>
+      </div>
+      <div class="kpis" id="kpis"></div>
+
+      <h3>全班最常見的誤解</h3>
+      <div id="kind-bars" class="bars"></div>
+
+      <h3>卡最久的步驟（完成這一步的平均秒數）</h3>
+      <div class="table-wrap"><table id="step-table"></table></div>
+
+      <h3>每位學生</h3>
+      <div class="table-wrap"><table id="player-table"></table></div>
+      <p class="muted small">「閒置」＝距離上次完成一步（或加入）已過幾秒；超過 90 秒標橘色，可以走過去看看。首次正確率＝完成的步驟中，第一次按「檢查」就成立的比例。</p>
+    </section>
+  </main>
+  <div class="toast hidden" id="toast" role="alert"></div>
+  <script type="module" src="teacher.js"></script>
+</body>
+</html>

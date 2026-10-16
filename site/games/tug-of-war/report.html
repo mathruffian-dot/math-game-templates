@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>拔河對戰・學習報告</title>
+  <link rel="stylesheet" href="../../shared/base.css">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .report section { margin-top: 16px; }
+    .tbl-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 15px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: var(--bg); position: sticky; top: 0; cursor: pointer; white-space: nowrap; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .ok { color: var(--ok); font-weight: 700; } .bad { color: var(--red); font-weight: 700; }
+    .bar { display: inline-block; height: 10px; background: var(--red); border-radius: 5px; vertical-align: middle; margin-right: 6px; }
+    .cards { display: flex; gap: 12px; flex-wrap: wrap; }
+    .cards > div { flex: 1 1 140px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--panel); }
+    .cards b { display: block; font-size: 28px; }
+    #rooms { flex: 1 1 280px; }
+    code { font-size: 13px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <h1><a href="./?teacher=1">拔河對戰</a>・學習報告</h1>
+      <span id="mode-badge" class="mode-badge hidden" title="尚未設定 Supabase：只讀得到這台電腦的資料">本機模式</span>
+    </div>
+  </header>
+  <main class="wrap report">
+    <section class="panel">
+      <form id="q" class="row">
+        <input id="rooms" placeholder="房號，可多個（用逗號或空白分隔）" autocomplete="off" aria-label="房號">
+        <label class="row" style="gap:6px"><input type="checkbox" id="all" style="min-height:24px;width:24px"> 全部（含單人練習）</label>
+        <button class="primary">讀取</button>
+      </form>
+      <p class="muted small">誤解統計用穩定的 <code>misconception</code> 代碼分群，不用帶數字的回饋文字。「首次正確率」只算每題第一次作答，較能反映獨立完成程度。</p>
+      <p id="status" class="muted"></p>
+    </section>
+    <div id="out" class="hidden">
+      <section class="cards" id="cards"></section>
+      <section class="panel">
+        <div class="row"><h2 style="margin:0">匯出 CSV</h2>
+          <button data-csv="players">逐人</button><button data-csv="questions">每題</button>
+          <button data-csv="misconceptions">誤解排行</button><button data-csv="events">逐筆事件</button>
+        </div>
+      </section>
+      <section class="panel"><h2>誤解排行</h2><div class="tbl-wrap" id="t-mis"></div></section>
+      <section class="panel"><h2>每題正確率（由低到高）</h2><div class="tbl-wrap" id="t-q"></div></section>
+      <section class="panel"><h2>逐人正確率</h2><div class="tbl-wrap" id="t-p"></div></section>
+      <section class="panel"><h2>逐筆事件 <small class="muted" id="ev-note"></small></h2><div class="tbl-wrap" id="t-ev"></div></section>
+    </div>
+  </main>
+  <div id="toast" class="toast hidden"></div>
+  <script type="module" src="report.js"></script>
+</body>
+</html>

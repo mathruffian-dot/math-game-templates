@@ -1,0 +1,130 @@
+/* T3 拖拉解題板：iPad 優先；色彩用 base.css 的 token（含深色模式） */
+
+/* 浮動狀態列 */
+.statusbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.statusbar .brand { font-weight: 700; margin-right: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px; background: var(--bg); font-size: 15px; }
+.chip b { font-size: 18px; }
+.chip.urgent { background: var(--red-soft); color: var(--red); }
+.chip.who:empty { display: none; }
+
+.narrow { max-width: 560px; margin: 24px auto; }
+h1 { font-size: 26px; margin: 0 0 8px; }
+h2 { font-size: 22px; margin: 0 0 12px; }
+#start-form { display: grid; gap: 12px; }
+#start-form input { width: 100%; }
+.picker { display: grid; gap: 8px; }
+.pick { display: flex; gap: 12px; align-items: center; min-height: 56px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.pick input { min-height: 24px; width: 24px; height: 24px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.row.end { justify-content: flex-end; margin-top: 12px; }
+
+/* 作答工作區：寬螢幕左右兩欄（題目＋解題板｜目標＋卡片），窄螢幕上下排 */
+.work { display: grid; gap: 12px; }
+@media (min-width: 900px) {
+  .work { grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr); align-items: start; }
+  .col-right { position: sticky; top: 72px; }
+}
+.p-title { font-size: 14px; color: var(--muted); }
+.p-stem { font-size: 22px; font-weight: 600; margin: 4px 0 12px; }
+.p-figure svg { max-width: 100%; height: auto; }
+
+/* 解題板：算式行 */
+.board { display: grid; gap: 8px; }
+.line { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; font-size: 22px; }
+.line-no { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 14px; background: var(--bg); color: var(--muted); }
+.line-body { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.done-line { background: var(--ok-soft); }
+.current-line { background: var(--blue-soft); outline: 2px solid var(--blue); }
+.tok { white-space: nowrap; }
+.line-frac > span { display: flex; justify-content: center; padding: 3px 4px; gap: 4px; }
+
+/* 卡槽 */
+.slot {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 76px; min-height: 56px; padding: 3px; border-radius: 12px;
+  border: 2px dashed var(--muted); background: var(--panel); cursor: pointer; touch-action: manipulation;
+  transition: background .12s, border-color .12s;
+}
+.slot.filled { border-style: solid; border-color: var(--blue); padding: 2px; }
+.slot.over { border-color: var(--accent); background: var(--blue-soft); transform: scale(1.06); }
+.slot.wrong { border-color: var(--red); background: var(--red-soft); border-style: solid; }
+.slot.done { cursor: default; border: none; background: transparent; min-width: 0; min-height: 0; padding: 0 2px; font-weight: 700; }
+.slot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* 卡片 */
+.tray { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; margin: 12px 0; border-radius: 12px; background: var(--bg); min-height: 80px; }
+.card {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 68px; min-height: 56px; padding: 6px 14px;
+  border: 2px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink);
+  font: inherit; font-size: 22px; font-weight: 600; box-shadow: 0 2px 0 var(--line);
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.card.in-slot { min-width: 66px; min-height: 48px; box-shadow: none; border-color: transparent; background: var(--blue-soft); }
+.card.selected { border-color: var(--accent); background: var(--blue-soft); transform: translateY(-3px); box-shadow: 0 4px 0 var(--accent); }
+.card.used { opacity: .25; cursor: default; box-shadow: none; border-style: dashed; }
+.card.dragging { opacity: .35; }
+.card.ghost { position: fixed; left: 0; top: 0; z-index: 100; pointer-events: none; opacity: .92; box-shadow: 0 8px 20px rgba(0,0,0,.25); border-color: var(--accent); }
+.card .frac, .slot .frac { font-size: .85em; }
+/* 卡片與格子是 flex 容器，數學內容包在 .m 裡，上標才會正常上移 */
+.m { display: inline; white-space: nowrap; }
+sup { font-size: .65em; line-height: 0; }
+.reveal { animation: pulse 1s ease-in-out infinite; outline: 3px solid var(--warn); outline-offset: 2px; }
+@keyframes pulse { 50% { outline-color: transparent; } }
+
+/* 目標、鷹架、回饋、提示 */
+.goal { display: grid; gap: 6px; font-size: 19px; }
+.step-no { font-size: 14px; color: var(--muted); }
+.scaffold { font-size: 16px; padding: 8px 12px; border-radius: 10px; background: var(--warn-soft); }
+.feedback { margin-top: 12px; padding: 10px 14px; border-radius: 12px; font-size: 17px; }
+.feedback.ok { background: var(--ok-soft); color: var(--ok); }
+.feedback.err { background: var(--red-soft); color: var(--red); }
+.feedback.info { background: var(--warn-soft); color: var(--warn); }
+.hints { margin: 0 0 12px; padding-left: 0; list-style: none; display: grid; gap: 6px; font-size: 16px; }
+.hints li { padding: 8px 12px; border-radius: 10px; background: var(--bg); }
+.hints:empty { display: none; }
+.actions { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; }
+.actions button { min-height: 56px; }
+.shake { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+/* 直式（多項式除法） */
+.longdiv {
+  display: grid; grid-template-columns: auto repeat(var(--cols), minmax(80px, 1fr));
+  align-items: center; justify-items: center; font-size: 22px; row-gap: 4px; margin-bottom: 8px; overflow-x: auto;
+}
+.ld-colhead { font-size: 13px; color: var(--muted); }
+.ld-label { justify-self: end; display: flex; align-items: center; gap: 2px; padding-right: 4px; white-space: nowrap; }
+.ld-bracket { font-size: 34px; line-height: 1; font-weight: 300; }
+.ld-quot { justify-self: stretch; display: flex; gap: 8px; align-items: center; min-height: 60px; padding: 0 6px; }
+.ld-gap { width: 4px; }
+.ld-cell { justify-self: stretch; display: flex; justify-content: center; align-items: center; min-height: 60px; }
+.ld-dividend { border-top: 3px solid var(--ink); }
+.ld-bar { border-top: 2px solid var(--ink); }
+.ld-current { background: var(--blue-soft); }
+
+/* 回顧 */
+.rv-list { display: grid; gap: 10px; padding-left: 0; list-style: none; }
+.rv-list li { padding: 10px 12px; border-radius: 12px; background: var(--bg); }
+.rv-goal { font-size: 15px; color: var(--muted); }
+.rv-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 22px; }
+.rv-meta { font-size: 14px; color: var(--ok); }
+.rv-total { font-size: 18px; }
+.rv-board { margin: 12px 0; }
+.big-stats { display: flex; gap: 16px; justify-content: center; margin: 16px 0; }
+.big-stats div { display: grid; text-align: center; padding: 12px 20px; border-radius: 12px; background: var(--bg); }
+.big-stats b { font-size: 34px; }
+
+@media (max-width: 520px) {
+  .line, .rv-line, .longdiv { font-size: 19px; }
+  .card { font-size: 20px; min-width: 60px; }
+  .slot { min-width: 64px; }
+  .actions { grid-template-columns: 1fr 1fr; }
+  .actions #check-btn { grid-column: span 2; }
+  .longdiv { grid-template-columns: auto repeat(var(--cols), minmax(64px, 1fr)); }
+}

@@ -1,0 +1,17 @@
+# 依賴與工具暫存
+node_modules/
+.wrangler/
+.supabase/
+
+# 機密設定（前端只放 publishable key，寫在 site/shared/config.js）
+.env*
+.dev.vars
+*.local.*
+
+# 教材原檔暫存（有著作權，絕不上傳）
+materials/
+
+# 系統雜檔
+.DS_Store
+Thumbs.db
+desktop.ini

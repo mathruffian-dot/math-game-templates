@@ -1,0 +1,89 @@
+# 數學遊戲模板（Math Game Templates）
+
+給國中數學老師的 AI Agent 遊戲製作起手包。用 Codex、Google Antigravity 或 OpenCode 開啟這個資料夾，貼上你的教材，Agent 會依本 repo 的設計規範做出課堂遊戲，部署到 **Cloudflare（網頁，Workers 靜態資產 `*.workers.dev`）＋ Supabase（房間與作答紀錄）**。
+
+- 示範站：https://math-game-templates.mathruffian-teaching.workers.dev
+- 本 repo：https://github.com/mathruffian-dot/math-game-templates
+- 第 1 小時的平台連接懶人包：https://github.com/mathruffian-dot/agent-connect-lazy-pack
+
+核心立場：遊戲是**發展活動與形成性評量**，不是單元結束的獎勵。好的教學遊戲要讓「學生的數學行為就是遊戲操作」，並把每一步留下來給老師看。
+
+---
+
+## 三句話快速開始
+
+1. 用 Agent（Codex／Antigravity／OpenCode）**開啟這個資料夾**。
+2. **貼上教材**（文字、題目或課本頁的重點），或把檔案放進 `materials/` 資料夾。
+3. 對 Agent 說：**「照 AGENTS.md 幫我做成 T1 遊戲並部署。」**（第三小時改說 T3）
+
+Agent 會先摘要教學目標與常見誤解請你確認，再寫設計文件、做遊戲、測試、部署，最後給你學生端與老師端網址。你只需要：註冊、登入、在跳出的視窗按「同意／允許」。
+
+---
+
+## 六種模板總表
+
+兩軸分類：**定位**（把評量包裝成遊戲 vs 讓學習歷程成為遊戲）×**互動結構**。完整決策樹見 [docs/template-catalog.md](docs/template-catalog.md)。
+
+| 代號 | 模板 | 定位 | 人數 | 可直接執行？ | 原型（本專案） |
+|------|------|------|------|------|------|
+| **T1** | 格鬥／拔河對戰 | 評量包裝 | 1v1～小組對戰 | ✅ `site/games/tug-of-war/` | 不等式格鬥場、多項式除法格鬥場、相似形格鬥場 |
+| T2 | 全班限時主持 | 兩者皆可 | 全班一場 | 設計卡 | 中位數偵探 |
+| **T3** | 拖拉建構解題板 | 發展活動 | 單人（可加對戰） | ✅ `site/games/step-board/` | 多項式除法直式、相似形解題板、比例消除 |
+| T4 | 棋盤策略 | 發展活動 | 2～4 人 | 設計卡 | 座標軍艦棋、對稱棋三人戰 |
+| T5 | 單人闖關解謎 | 發展活動 | 單人 | 設計卡 | 鏡像學徒、對稱棋孔明棋消除、三視圖建築師 |
+| T6 | 全班共建 | 發展活動 | 全班 | 設計卡 | 相似島 |
+
+設計卡在 `cards/`，每張都附「給 Agent 的完整實作提示詞」。
+
+---
+
+## 研習三小時對應
+
+| 時段 | 做什麼 | 用到 |
+|------|--------|------|
+| 第 1 小時 | 連接 Agent 平台、Cloudflare、Supabase | [agent-connect-lazy-pack](https://github.com/mathruffian-dot/agent-connect-lazy-pack) |
+| 第 2 小時 | **遊戲化評量**：把自己的題目做成 T1 拔河對戰，部署、兩台裝置對戰 | `docs/prompts.md` 第二小時、`docs/design-rules.md` |
+| 第 3 小時 | **發展活動**：把一道例題拆成拖拉解題步驟（T3）；進階挑戰 T2／T4／T5／T6 | `docs/prompts.md` 第三小時、`cards/` |
+
+研習脈絡：三師爸〈AI Agent 教學應用｜遊戲化教學／學生想破關，還是想下課〉（https://youtu.be/xoOT_FNWYBw）區分了「把評量包裝成遊戲」（影片中的多項式除法拔河對戰，被稱為巧克力花椰菜）與「讓學習歷程成為遊戲」（拖拉補項與係數）。第 2 小時做前者、第 3 小時做後者，親手體會差別。
+
+---
+
+## 資料夾結構
+
+```
+math-game-templates/
+├── README.md               給老師（本檔）
+├── AGENTS.md               給 Agent 的工作守則（最重要）
+├── CLAUDE.md / GEMINI.md   指向 AGENTS.md
+├── docs/
+│   ├── design-rules.md     回推八步驟填寫表、兩問檢驗、設計原理
+│   ├── template-catalog.md 六型模板與決策樹
+│   ├── deploy.md           Supabase＋Cloudflare 部署、驗收、常見錯誤
+│   ├── prompts.md          研習可直接複製的提示詞
+│   ├── data-and-report.md  留痕事件設計與分析
+│   └── references.md       理論依據與文獻
+├── cards/                  T2／T4／T5／T6 設計卡
+├── site/                   ← 整個資料夾部署到 Cloudflare（wrangler deploy --assets）
+│   ├── index.html          作品入口頁
+│   ├── shared/             共用模組（後端、身分、QR、CSV、樣式）
+│   └── games/              tug-of-war（T1）、step-board（T3）、你的遊戲
+├── games/<你的遊戲>/DESIGN.md   設計文件（Agent 建立，不部署）
+├── materials/              教材暫存（不會被上傳，Agent 建立）
+└── supabase/migrations/    資料表（一個 Supabase 專案可供多款遊戲共用）
+```
+
+`site/shared/config.js` 留空時是**本機模式**：不用任何帳號，同一台電腦開兩個分頁就能測試對戰。
+
+---
+
+## 隱私與版權提醒
+
+- **教材原檔不要放進公開 repo**：課本、習作、教用版通常有著作權。放 `materials/`（已排除上傳），網站只放改寫後的題目。
+- **學生只用「班級-座號」**（如 `715-08`）或暱稱，不輸入真實姓名。作答紀錄對持有網站設定的人可讀，所以本來就不該放個資。
+- 前端只放 Supabase 的 publishable key；secret key 永遠不要給 Agent、也不要貼到對話裡。
+- 這是課堂等級的安全設計（學生不登入），不適合正式考試或成績登錄。
+
+## 授權
+
+程式與文件採 [MIT License](LICENSE)。原型遊戲與設計規範來自 mathruffian-dot 的「2026 數學遊戲」專案。
