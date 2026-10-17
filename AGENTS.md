@@ -58,9 +58,10 @@
 - **停下來等使用者確認或修改。**
 
 ### ② 選模板
-依 `docs/template-catalog.md` 的決策樹選 T1～T6。可直接執行的只有：
+依 `docs/template-catalog.md` 的決策樹選 T1～T7。可直接執行的只有：
 - **T1** `site/games/tug-of-war/`（紅藍格鬥・扣血對戰，評量包裝；`?play=steps` 為發展式出招；資料夾名稱沿用 tug-of-war）
 - **T3** `site/games/step-board/`（拖拉建構解題板，發展活動）
+- **T7** `site/games/chain-match/`（盤面連線消除，發展活動，跨科：共用盤面引擎，每科只寫「內容包」＝方塊內容＋關係判斷規則；內建數學比例式、國文成語、英文構詞；原型：比例消除）
 
 T2／T4／T5／T6 只有設計卡（`cards/`），需依卡片從零實作；建議先完成 Level 1 單人版，再接多人。
 
@@ -72,8 +73,8 @@ T2／T4／T5／T6 只有設計卡（`cards/`），需依卡片從零實作；建
 
 ### ④ 複製模板並改內容
 1. 複製 `site/games/<模板>/` → `site/games/<slug>/`。
-2. **先讀新資料夾內所有檔案的說明文件與檔頭註解**，找出題庫（T1）或 content（T3）的位置與格式，以模板實際寫法為準。
-3. 搜尋原 game id 字串（`tug-of-war` 或 `step-board`），逐一檢視後改成 `<slug>`（game id 規則：`^[a-z0-9-]{2,40}$`）。不改會和模板共用房間與事件資料。
+2. **先讀新資料夾內所有檔案的說明文件與檔頭註解**，找出題庫（T1）、content（T3）或內容包（T7，`content/<科目>/<主題>.js`，介面見其 README）的位置與格式，以模板實際寫法為準。
+3. 搜尋原 game id 字串（`tug-of-war`、`step-board` 或 `chain-match`），逐一檢視後改成 `<slug>`（game id 規則：`^[a-z0-9-]{2,40}$`）。不改會和模板共用房間與事件資料。
 4. 改題庫／content：每題標好誤解代碼；誘答各對準一個誤解；數學記號依規範 10。
 5. 在 `site/index.html` 的「學員新增的遊戲」註解區塊加入連結。
 6. 不要修改 `site/shared/`；若真的需要，先問使用者（會影響所有遊戲）。
@@ -216,6 +217,7 @@ worker/index.js              API（Durable Objects 房間＋D1 事件／成績�
 migrations/                  D1 資料表（已完成，勿改；新增才另開檔）
 site/games/tug-of-war/       T1 模板（勿改，複製後再改）
 site/games/step-board/       T3 模板（勿改，複製後再改）
+site/games/chain-match/      T7 模板（勿改，複製後再改；新科目＝新增一個內容包）
 site/games/<slug>/           你做的遊戲
 cards/T*/DESIGN-CARD.md      T2／T4／T5／T6 設計卡與實作提示詞
 docs/                        規範、模板目錄、部署、提示詞、文獻、資料分析

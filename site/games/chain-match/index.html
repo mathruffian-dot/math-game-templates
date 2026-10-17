@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>盤面連線消除</title>
+  <meta name="description" content="T7 盤面連線消除：在盤面上串出一組成立的學科關係就消除。數學比例式、國文成語、英文構詞共用同一個引擎。">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 浮動狀態列：內容包、分數、連擊、時間 -->
+  <header class="statusbar" aria-live="polite">
+    <span class="brand" id="st-title">盤面連線消除</span>
+    <span class="chip">分數 <b id="st-score">0</b></span>
+    <span class="chip">連擊 <b id="st-combo">0</b></span>
+    <span class="chip time">時間 <b id="st-time">—</b></span>
+    <span class="chip who" id="who"></span>
+    <span class="mode-badge hidden" id="mode-badge" title="資料只存在這台裝置的瀏覽器">本機模式</span>
+  </header>
+
+  <main class="wrap">
+    <!-- 開始 -->
+    <section id="screen-start" class="screen panel narrow">
+      <h1>盤面連線消除 <span class="mode-badge" id="ns-badge"></span></h1>
+      <p class="muted">依序串起相鄰的方塊，串出一組<b>成立的關係</b>就消除。串錯會告訴你錯在哪裡。</p>
+      <form id="start-form">
+        <label for="player-input" id="id-label">班級-座號</label>
+        <div class="row"><input id="player-input" autocomplete="off" maxlength="12" required></div>
+        <div id="pack-picker" class="picker"></div>
+        <p class="muted small" id="start-note"></p>
+        <button class="primary" id="start-btn" type="submit">開始</button>
+      </form>
+    </section>
+
+    <!-- 等待老師開始 -->
+    <section id="screen-wait" class="screen panel narrow hidden">
+      <h2>已加入課堂 <span id="wait-room"></span></h2>
+      <p>今天的內容：<b id="wait-pack"></b></p>
+      <p class="muted" id="wait-rule"></p>
+      <p class="muted">等老師按「開始」……畫面會自動切換。</p>
+    </section>
+
+    <!-- 遊戲 -->
+    <section id="screen-play" class="screen hidden">
+      <div class="play">
+        <div class="rule" id="rule"></div>
+        <div class="preview" id="preview" aria-live="polite">&nbsp;</div>
+        <div class="feedback empty" id="feedback" role="status">&nbsp;</div>
+        <div class="board-wrap" id="board-wrap">
+          <div class="board" id="board" role="grid" aria-label="盤面"></div>
+          <svg class="chain-line" id="chain-line" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div class="float-gain hidden" id="float-gain"></div>
+        </div>
+        <div class="controls">
+          <button type="button" id="undo-btn">退一格</button>
+          <button type="button" id="clear-btn">清除</button>
+          <button type="button" id="hint-btn">提示</button>
+          <button type="button" id="mode-btn" title="切換拖曳／點選">點選模式</button>
+          <button type="button" id="submit-btn" class="primary">判定</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 結算 -->
+    <section id="screen-end" class="screen panel narrow hidden">
+      <h2 id="end-title">時間到！</h2>
+      <div id="end-summary"></div>
+      <h3>排行榜 <small class="muted" id="board-pack"></small></h3>
+      <ol class="leader" id="leader"><li class="muted">讀取中…</li></ol>
+      <div class="row">
+        <a class="btn" id="again-link" href="./">再玩一次（自主練習）</a>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast hidden" id="toast" role="alert"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

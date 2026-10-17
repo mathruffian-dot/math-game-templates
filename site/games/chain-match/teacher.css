@@ -1,0 +1,40 @@
+/* T7 盤面連線消除：老師端（沿用 T3 老師端版面） */
+.t-head h1 { font-size: 26px; margin: 8px 0 4px; }
+.panel { margin-bottom: 16px; }
+h2 { font-size: 21px; margin: 0 0 12px; }
+h3 { font-size: 17px; margin: 20px 0 8px; }
+.small { font-size: 14px; font-weight: 400; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.form-grid label { display: grid; gap: 4px; font-size: 15px; color: var(--muted); }
+.form-grid select, .form-grid input { width: 100%; color: var(--ink); }
+#reopen-code { width: 110px; text-transform: uppercase; }
+
+.room-grid { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: start; }
+@media (max-width: 700px) { .room-grid { grid-template-columns: 1fr; } }
+.code { font-size: 56px; font-weight: 800; letter-spacing: .12em; line-height: 1.1; }
+.room-content { margin: 4px 0 8px; }
+.status-line { margin-bottom: 12px; }
+.timer { font-weight: 700; font-size: 22px; }
+.timer.urgent { color: var(--red); }
+.link-row { display: flex; gap: 8px; margin-top: 12px; }
+.link-row input { flex: 1; min-width: 0; font-size: 14px; }
+.qr img { display: block; background: #fff; padding: 8px; border-radius: 12px; }
+
+.dash-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.kpi { display: grid; text-align: center; padding: 10px; border-radius: 12px; background: var(--bg); }
+.kpi b { font-size: 28px; }
+.kpi span { font-size: 14px; color: var(--muted); }
+
+.bars { display: grid; gap: 6px; }
+.bar-row { display: grid; grid-template-columns: minmax(160px, 2fr) 3fr 48px; gap: 8px; align-items: center; font-size: 15px; }
+.bar-track { height: 18px; border-radius: 9px; background: var(--bg); overflow: hidden; }
+.bar { display: block; height: 100%; background: var(--red); border-radius: 9px; }
+.bar-num { text-align: right; font-weight: 700; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+td.idle { background: var(--warn-soft); color: var(--warn); font-weight: 700; }
+.combo-text { font-weight: 700; letter-spacing: .04em; }

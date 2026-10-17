@@ -1,0 +1,106 @@
+/* T7 盤面連線消除：iPad 優先；色彩用 base.css 的 token（含深色模式） */
+
+/* 浮動狀態列 */
+.statusbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center;
+  padding: 6px 16px; background: var(--panel); border-bottom: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.statusbar .brand { font-weight: 700; margin-right: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 12px; border-radius: 999px; background: var(--bg); font-size: 15px; }
+.chip b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.chip.urgent { background: var(--red-soft); color: var(--red); }
+.chip.who:empty { display: none; }
+
+.narrow { max-width: 560px; margin: 24px auto; }
+h1 { font-size: 26px; margin: 0 0 8px; }
+h2 { font-size: 22px; margin: 0 0 12px; }
+h3 { font-size: 18px; margin: 20px 0 8px; }
+.small { font-size: 14px; }
+#start-form { display: grid; gap: 12px; }
+#start-form input { width: 100%; }
+.picker { display: grid; gap: 8px; }
+.pick { display: flex; gap: 12px; align-items: center; min-height: 56px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.pick input { min-height: 24px; width: 24px; height: 24px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+
+/* 遊戲區：規則、即時預覽、回饋、盤面、按鈕集中在同一欄 */
+.wrap:has(#screen-play:not(.hidden)) { padding-top: 8px; padding-bottom: 8px; }
+.play { display: grid; gap: 8px; max-width: 980px; margin: 0 auto; }
+.rule { font-size: 15px; color: var(--muted); }
+.preview { min-height: 32px; font-size: 20px; text-align: center; overflow-wrap: anywhere; }
+.feedback { padding: 8px 12px; border-radius: 12px; font-size: 17px; min-height: 44px; }
+.feedback.empty { visibility: hidden; }   /* 保留高度，回饋出現時盤面不跳動（避免誤點） */
+.feedback.ok { background: var(--ok-soft); color: var(--ok); }
+.feedback.err { background: var(--red-soft); color: var(--red); }
+.feedback.err.stale { opacity: .6; }
+.feedback.info { background: var(--blue-soft); color: var(--blue); }
+.feedback .muted { margin-left: 6px; }
+
+/* 盤面：依欄列比例縮放，每格至少約 48px；放不下高度時改以寬度為準（可捲動） */
+.board-wrap {
+  --cols: 8; --rows: 6;
+  position: relative; margin: 0 auto; container-type: inline-size;
+  width: max(min(100%, calc(var(--cols) * 52px)), min(100%, calc((100dvh - 270px) * var(--cols) / var(--rows))));
+  aspect-ratio: var(--cols) / var(--rows);
+}
+.board {
+  display: grid; width: 100%; height: 100%; gap: 4px;
+  grid-template-columns: repeat(var(--cols), 1fr); grid-template-rows: repeat(var(--rows), 1fr);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
+}
+.board.drag-mode { touch-action: none; }
+.cell {
+  position: relative; display: grid; place-items: center; min-width: 0; min-height: 0;
+  border-radius: 10px; border: 2px solid var(--line); background: var(--panel); cursor: pointer;
+  font-weight: 700; font-size: 22px; font-size: calc(100cqw / var(--cols) * .42); line-height: 1;
+  font-variant-numeric: tabular-nums; transition: background .12s, border-color .12s, transform .12s;
+}
+.cell.l3 { font-size: 17px; font-size: calc(100cqw / var(--cols) * .3); }
+.cell.l5 { font-size: 14px; font-size: calc(100cqw / var(--cols) * .23); }
+.cell.l8 { font-size: 12px; font-size: calc(100cqw / var(--cols) * .18); }
+.cell .tile { pointer-events: none; padding: 0 2px; white-space: nowrap; text-align: center; }
+.cell .ord { position: absolute; top: 2px; left: 4px; font-style: normal; font-size: 12px; font-weight: 700; color: var(--accent); pointer-events: none; }
+/* 構詞：字首、字根、字尾用底色區分位置（不標示對錯） */
+.cell.tag-prefix { background: var(--blue-soft); }
+.cell.tag-suffix { background: var(--warn-soft); }
+.cell.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); transform: scale(.95); }
+.cell.bad { border-color: var(--red); background: var(--red-soft); }
+.cell.ok { border-color: var(--ok); background: var(--ok-soft); animation: pop .4s ease-out; }
+.cell.hint { animation: blink 1s ease-in-out infinite; border-color: var(--warn); }
+.cell.drop { animation: drop .28s ease-out; }
+@keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(.2); opacity: .2; } }
+@keyframes blink { 50% { background: var(--warn-soft); } }
+@keyframes drop { from { transform: translateY(-40%); opacity: .2; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cell.ok, .cell.hint, .cell.drop { animation: none; } }
+
+.chain-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.chain-line polyline { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: .55; vector-effect: non-scaling-stroke; }
+.chain-line polyline.bad { stroke: var(--red); }
+.float-gain { position: absolute; left: 50%; top: 40%; transform: translate(-50%, 0); font-size: 40px; font-weight: 800; color: var(--ok); pointer-events: none; text-shadow: 0 2px 8px var(--panel); }
+.float-gain.go { animation: rise .7s ease-out forwards; }
+@keyframes rise { from { transform: translate(-50%, 0); opacity: 1; } to { transform: translate(-50%, -60px); opacity: 0; } }
+
+.controls { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; max-width: 900px; width: 100%; margin: 0 auto; }
+.controls button { padding: 8px 6px; white-space: nowrap; }
+.preview .muted { font-size: 15px; }
+@media (max-width: 560px) {
+  .rule { font-size: 13px; line-height: 1.4; }
+  .preview { font-size: 17px; min-height: 28px; }
+  .preview .muted { font-size: 13px; }
+  .feedback { font-size: 15px; padding: 6px 10px; }
+  .controls { gap: 6px; }
+  .controls button { font-size: 15px; padding: 6px 2px; }
+  .statusbar { padding: 4px 12px; }
+  .chip { font-size: 13px; padding: 2px 8px; }
+}
+
+/* 結算 */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.kpi { display: grid; text-align: center; padding: 10px; border-radius: 12px; background: var(--bg); }
+.kpi b { font-size: 28px; }
+.kpi span { font-size: 14px; color: var(--muted); }
+.leader { padding-left: 28px; margin: 0 0 16px; }
+.leader li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.leader li > * { margin-right: 12px; }
+.leader li.me { font-weight: 700; color: var(--accent); }
